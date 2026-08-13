@@ -2,6 +2,7 @@ from fastapi import FastAPI, Request, Form, Depends, HTTPException, status
 from fastapi.responses import HTMLResponse, RedirectResponse
 import sqlite3
 import os
+from twilio.rest import Client
 
 app = FastAPI(title="Centro Auto Sofisticar")
 
@@ -10,6 +11,37 @@ PIN_ACESSO = "1234"
 
 # 💾 Configuração da Base de Dados SQLite
 DB_FILE = "oficina.db"
+
+# 📱 CONFIGURAÇÃO DO TWILIO (SMS)
+# Substitui com as tuas chaves do Twilio (ou define como variáveis de ambiente)
+TWILIO_ACCOUNT_SID = os.getenv("TWILIO_ACCOUNT_SID", "SEU_ACCOUNT_SID_AQUI")
+TWILIO_AUTH_TOKEN = os.getenv("TWILIO_AUTH_TOKEN", "SEU_AUTH_TOKEN_AQUI")
+TWILIO_PHONE_NUMBER = os.getenv("TWILIO_PHONE_NUMBER", "+1234567890")
+
+def enviar_sms_confirmacao(numero_destino: str, nome_cliente: str, data: str, hora: str):
+    """Função para enviar SMS ao cliente via Twilio"""
+    try:
+        # Formatar número para padrão internacional (+351 para Portugal)
+        numero_limpo = "".join(filter(str.isdigit, numero_destino))
+        if not numero_limpo.startswith("351") and len(numero_limpo) == 9:
+            numero_formatado = f"+351{numero_limpo}"
+        else:
+            numero_formatado = f"+{numero_limpo}"
+
+        client = Client(TWILIO_ACCOUNT_SID, TWILIO_AUTH_TOKEN)
+        mensagem = (
+            f"Olá {nome_cliente}! O seu agendamento no Centro Auto Sofisticar "
+            f"para o dia {data} às {hora} foi CONFIRMADO. Obrigado!"
+        )
+        
+        client.messages.create(
+            body=mensagem,
+            from_=TWILIO_PHONE_NUMBER,
+            to=numero_formatado
+        )
+        print(f"✅ SMS enviado para {numero_formatado}")
+    except Exception as e:
+        print(f"❌ Erro ao enviar SMS: {e}")
 
 def init_db():
     conn = sqlite3.connect(DB_FILE)
@@ -31,7 +63,6 @@ def init_db():
     conn.commit()
     conn.close()
 
-# Inicializar a base de dados ao arrancar
 init_db()
 
 SERVICOS = [
@@ -120,7 +151,7 @@ def pagina_cliente(sucesso: bool = False):
     """
     return html
 
-# 📩 PROCESSAR AGENDAMENTO (Grava na Base de Dados)
+# 📩 PROCESSAR AGENDAMENTO
 @app.post("/agendar")
 def processar_agendamento(
     cliente: str = Form(...),
@@ -142,10 +173,32 @@ def processar_agendamento(
     
     return RedirectResponse(url="/cliente?sucesso=True", status_code=303)
 
-# 📊 PAINEL DA OFICINA (Com Login / PIN de Segurança)
+# 🔄 ALTERAR ESTADO E ENVIAR SMS QUANDO CONFIRMADO
+@app.post("/alterar_estado")
+def alterar_estado(id_agendamento: int = Form(...), novo_estado: str = Form(...), pin: str = Form(...)):
+    if pin == PIN_ACESSO:
+        conn = sqlite3.connect(DB_FILE)
+        cursor = conn.cursor()
+        
+        # Buscar dados do cliente antes de atualizar
+        cursor.execute("SELECT cliente, contacto, data, hora FROM agendamentos WHERE id = ?", (id_agendamento,))
+        agendamento = cursor.fetchone()
+        
+        # Atualizar estado
+        cursor.execute("UPDATE agendamentos SET estado = ? WHERE id = ?", (novo_estado, id_agendamento))
+        conn.commit()
+        conn.close()
+
+        # Se mudou para Confirmado, envia SMS!
+        if novo_estado == "Confirmado" and agendamento:
+            nome_cliente, contacto, data, hora = agendamento
+            enviar_sms_confirmacao(contacto, nome_cliente, data, hora)
+
+    return RedirectResponse(url=f"/painel?pin={pin}", status_code=303)
+
+# 📊 PAINEL DA OFICINA
 @app.get("/painel", response_class=HTMLResponse)
 def pagina_painel(pin: str = ""):
-    # Se o PIN estiver incorreto ou não for preenchido, mostra formulário de login
     if pin != PIN_ACESSO:
         erro_html = '<p style="color: red; text-align: center;">❌ PIN Incorreto!</p>' if pin else ''
         return f"""
@@ -177,7 +230,6 @@ def pagina_painel(pin: str = ""):
         </html>
         """
 
-    # Se o PIN estiver correto, lê da Base de Dados
     conn = sqlite3.connect(DB_FILE)
     cursor = conn.cursor()
     cursor.execute("SELECT id, cliente, contacto, matricula, servico, data, hora, observacoes, estado FROM agendamentos ORDER BY id DESC")
@@ -187,25 +239,38 @@ def pagina_painel(pin: str = ""):
     linhas_tabela = ""
     for item in registos:
         id_item, cliente, contacto, matricula, servico, data, hora, observacoes, estado = item
-        cor_badge = "#ffc107" if estado == "Pendente" else "#28a745"
         
-        estilo_linha = ""
-        if "Lavagens" in servico:
-            estilo_linha = "background-color: #e3f2fd;"
-        elif "Polimento" in servico:
-            estilo_linha = "background-color: #f3e5f5;"
-        elif "Elétrica" in servico or "Ar Condicionado" in servico:
-            estilo_linha = "background-color: #fffde7;"
+        if estado == "Pendente":
+            cor_badge = "#ffc107"
+        elif estado == "Confirmado":
+            cor_badge = "#17a2b8"
+        elif estado == "Concluído":
+            cor_badge = "#28a745"
+        else:
+            cor_badge = "#dc3545"
 
         linhas_tabela += f"""
-        <tr style="{estilo_linha}">
+        <tr>
             <td>#{id_item}</td>
             <td><b>{cliente}</b><br><small>{contacto}</small></td>
             <td><span style="background: #333; color: white; padding: 3px 8px; border-radius: 4px; font-weight: bold;">{matricula}</span></td>
             <td><b>{servico}</b></td>
             <td>{data} às {hora}</td>
             <td><i>{observacoes or '-'}</i></td>
-            <td><span style="background-color: {cor_badge}; color: black; padding: 5px 10px; border-radius: 12px; font-weight: bold; font-size: 12px;">{estado}</span></td>
+            <td>
+                <span style="background-color: {cor_badge}; color: black; padding: 4px 8px; border-radius: 12px; font-weight: bold; font-size: 12px; display: inline-block; margin-bottom: 5px;">{estado}</span>
+                <form action="/alterar_estado" method="post" style="margin: 0;">
+                    <input type="hidden" name="id_agendamento" value="{id_item}">
+                    <input type="hidden" name="pin" value="{pin}">
+                    <select name="novo_estado" onchange="this.form.submit()" style="padding: 4px; font-size: 12px; border-radius: 4px;">
+                        <option value="" disabled selected>Mudar estado...</option>
+                        <option value="Pendente">Pendente</option>
+                        <option value="Confirmado">📲 Confirmar & Enviar SMS</option>
+                        <option value="Concluído">Concluído</option>
+                        <option value="Cancelado">Cancelado</option>
+                    </select>
+                </form>
+            </td>
         </tr>
         """
 
@@ -239,7 +304,7 @@ def pagina_painel(pin: str = ""):
                     <th>Área / Serviço Solicitado</th>
                     <th>Data & Hora</th>
                     <th>Observações</th>
-                    <th>Estado</th>
+                    <th>Estado / Ação</th>
                 </tr>
             </thead>
             <tbody>
