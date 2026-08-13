@@ -17,6 +17,17 @@ TWILIO_ACCOUNT_SID = os.getenv("TWILIO_ACCOUNT_SID", "")
 TWILIO_AUTH_TOKEN = os.getenv("TWILIO_AUTH_TOKEN", "")
 TWILIO_PHONE_NUMBER = os.getenv("TWILIO_PHONE_NUMBER", "")
 
+def limpar_dados_antigos():
+    """Apaga automaticamente os agendamentos criados há mais de 30 dias (Conformidade RGPD)"""
+    try:
+        conn = sqlite3.connect(DB_FILE)
+        cursor = conn.cursor()
+        cursor.execute("DELETE FROM agendamentos WHERE criado_em < datetime('now', '-30 days')")
+        conn.commit()
+        conn.close()
+    except Exception as e:
+        print(f"❌ Erro ao limpar dados antigos: {e}")
+
 def enviar_sms_status(numero_destino: str, nome_cliente: str, novo_estado: str):
     """Envia SMS de atualização de estado ao cliente"""
     if not (TWILIO_ACCOUNT_SID and TWILIO_AUTH_TOKEN and TWILIO_PHONE_NUMBER):
@@ -59,7 +70,8 @@ def init_db():
             data TEXT NOT NULL,
             hora TEXT NOT NULL,
             estado TEXT DEFAULT 'Pendente',
-            observacoes TEXT
+            observacoes TEXT,
+            criado_em DATETIME DEFAULT CURRENT_TIMESTAMP
         )
     """)
     conn.commit()
@@ -80,6 +92,7 @@ SERVICOS = {
 @app.get("/", response_class=HTMLResponse)
 @app.get("/cliente", response_class=HTMLResponse)
 def pagina_cliente(sucesso: bool = False):
+    limpar_dados_antigos()
     opcoes = "".join([f'<option value="{s}">{s}</option>' for s in SERVICOS.keys()])
     
     msg_sucesso = ""
@@ -178,6 +191,7 @@ def pagina_cliente(sucesso: bool = False):
 # 🔍 PÁGINA DE ACOMPANHAMENTO DO CLIENTE
 @app.get("/estado", response_class=HTMLResponse)
 def acompanhar_estado(matricula: str = ""):
+    limpar_dados_antigos()
     resultado_html = ""
     if matricula:
         mat_limpa = matricula.strip().upper()
@@ -209,7 +223,7 @@ def acompanhar_estado(matricula: str = ""):
             </div>
             """
         else:
-            resultado_html = '<p style="color: #ff6b6b; text-align: center; margin-top: 20px;">❌ Nenhuma viatura encontrada com essa matrícula.</p>'
+            resultado_html = '<p style="color: #ff6b6b; text-align: center; margin-top: 20px;">❌ Nenhuma viatura encontrada com essa matrícula (ou o registo já expirou).</p>'
 
     return f"""
     <!DOCTYPE html>
@@ -251,6 +265,7 @@ def processar_agendamento(
     hora: str = Form(...),
     observacoes: str = Form("")
 ):
+    limpar_dados_antigos()
     conn = sqlite3.connect(DB_FILE)
     cursor = conn.cursor()
     cursor.execute("""
@@ -264,6 +279,7 @@ def processar_agendamento(
 # 🔄 ALTERAR ESTADO E ENVIAR SMS
 @app.post("/alterar_estado")
 def alterar_estado(id_agendamento: int = Form(...), novo_estado: str = Form(...), pin: str = Form(...)):
+    limpar_dados_antigos()
     if pin == PIN_ACESSO:
         conn = sqlite3.connect(DB_FILE)
         cursor = conn.cursor()
@@ -284,6 +300,7 @@ def alterar_estado(id_agendamento: int = Form(...), novo_estado: str = Form(...)
 # 📊 PAINEL DE GESTÃO DA OFICINA
 @app.get("/painel", response_class=HTMLResponse)
 def pagina_painel(pin: str = ""):
+    limpar_dados_antigos()
     if pin != PIN_ACESSO:
         return f"""
         <!DOCTYPE html>
@@ -348,6 +365,7 @@ def pagina_painel(pin: str = ""):
     </head>
     <body>
         <h2>🛠️ Gestão de Agendamentos ({len(registos)})</h2>
+        <p style="color:#888; font-size:13px;">🔒 Política de Privacidade RGPD: Os dados são eliminados automaticamente 30 dias após a criação.</p>
         <table>
             <thead>
                 <tr>
