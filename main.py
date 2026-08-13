@@ -239,10 +239,8 @@ def pagina_painel(pin: str = ""):
     for item in registos:
         id_item, cliente, contacto, matricula, servico, data, hora, observacoes, estado = item
         
-        # Cor do badge
         cor_badge = "#ffc107" if estado == "Pendente" else ("#17a2b8" if estado == "Confirmado" else ("#28a745" if estado == "Concluído" else "#dc3545"))
 
-        # Seleção correta dos estados para evitar erros de sintaxe no f-string
         sel_pend = 'selected' if estado == 'Pendente' else ''
         sel_conf = 'selected' if estado == 'Confirmado' else ''
         sel_conc = 'selected' if estado == 'Concluído' else ''
@@ -311,9 +309,9 @@ def pagina_painel(pin: str = ""):
     </body>
     </html>
     """
-    if __name__ == "__main__":
+    return html
+
+if __name__ == "__main__":
     import uvicorn
-    import os
     port = int(os.environ.get("PORT", 10000))
     uvicorn.run("main:app", host="0.0.0.0", port=port)
-    return html
