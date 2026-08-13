@@ -1,12 +1,10 @@
 from fastapi import FastAPI, Request, Form
-from fastapi.responses import HTMLResponse, RedirectResponse, Response
+from fastapi.responses import HTMLResponse, RedirectResponse
 import sqlite3
 import os
-import io
-import csv
 from datetime import datetime, timedelta
 
-app = FastAPI(title="Centro Auto Sofisticar - Gestão Completa")
+app = FastAPI(title="Centro Auto Sofisticar - Gestão de Elite")
 DB_FILE = "oficina.db"
 PIN_ACESSO = os.getenv("GESTOR_PIN", "1234")
 
@@ -71,20 +69,6 @@ def init_db():
     conn = sqlite3.connect(DB_FILE)
     cursor = conn.cursor()
     cursor.execute("""
-        CREATE TABLE IF NOT EXISTS agendamentos (
-            id INTEGER PRIMARY KEY AUTOINCREMENT,
-            cliente TEXT NOT NULL,
-            contacto TEXT NOT NULL,
-            matricula TEXT NOT NULL,
-            servico TEXT NOT NULL,
-            data TEXT NOT NULL,
-            hora TEXT NOT NULL,
-            estado TEXT DEFAULT 'Pendente',
-            observacoes TEXT,
-            criado_em DATETIME DEFAULT CURRENT_TIMESTAMP
-        )
-    """)
-    cursor.execute("""
         CREATE TABLE IF NOT EXISTS orcamentos (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
             titulo TEXT NOT NULL,
@@ -95,6 +79,7 @@ def init_db():
             subtotal REAL NOT NULL,
             iva REAL NOT NULL,
             total REAL NOT NULL,
+            estado TEXT DEFAULT 'Pendente',
             criado_em DATETIME DEFAULT CURRENT_TIMESTAMP
         )
     """)
@@ -103,25 +88,140 @@ def init_db():
 
 init_db()
 
-# Função de semáforo para o Painel
-def get_status_emoji(criado_em_str, estado):
-    if estado != "Pendente": return "✅ Concluído"
-    try:
-        dt = datetime.strptime(criado_em_str, '%Y-%m-%d %H:%M:%S')
-        dif = datetime.now() - dt
-    except:
-        return "🟢 Em Prazo"
-    
-    if dif < timedelta(hours=1): return "🟢 Em Prazo"
-    if dif < timedelta(hours=2): return "🟡 Atenção (1h+)"
-    if dif < timedelta(hours=3): return "🟠 Alerta (2h+)"
-    return "🔴 Crítico (3h+)"
+@app.get("/", response_class=HTMLResponse)
+def index(pin: str = ""):
+    return f"""
+    <!DOCTYPE html>
+    <html lang="pt">
+    <head>
+        <meta charset="UTF-8">
+        <title>Centro Auto Sofisticar</title>
+        <style>
+            body {{ font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; background: #121212; color: #fff; text-align: center; padding-top: 100px; }}
+            .card {{ background: #181818; max-width: 500px; margin: auto; padding: 40px; border-radius: 12px; border-top: 5px solid #d4af37; box-shadow: 0 8px 20px rgba(0,0,0,0.5); }}
+            h1 {{ color: #d4af37; margin-bottom: 10px; }}
+            p {{ color: #aaa; margin-bottom: 30px; }}
+            a {{ display: inline-block; background: #d4af37; color: #121212; padding: 12px 25px; text-decoration: none; font-weight: bold; border-radius: 6px; transition: 0.3s; }}
+            a:hover {{ background: #b8972f; }}
+        </style>
+    </head>
+    <body>
+        <div class="card">
+            <div style="font-size: 50px; margin-bottom: 15px;">🏎️</div>
+            <h1>Centro Auto Sofisticar</h1>
+            <p>Sistema Profissional de Gestão e Orçamentos</p>
+            <a href="/painel?pin={PIN_ACESSO}">Aceder ao Painel de Gestão</a>
+        </div>
+    </body>
+    </html>
+    """
 
-# 🌐 PÁGINA DE CRIAÇÃO DE ORÇAMENTOS COM TODAS AS PEÇAS
+@app.get("/painel", response_class=HTMLResponse)
+def painel(pin: str = ""):
+    if pin != PIN_ACESSO:
+        return """
+        <body style="background:#121212; color:#fff; font-family:sans-serif; text-align:center; padding-top:100px;">
+            <div style="background:#181818; max-width:400px; margin:auto; padding:30px; border-radius:10px; border:1px solid #333;">
+                <h3 style="color:#ff4d4d;">Acesso Restrito</h3>
+                <p>PIN incorreto ou em falta. Use o link com ?pin=O_TEU_PIN</p>
+            </div>
+        </body>
+        """
+    
+    conn = sqlite3.connect(DB_FILE)
+    cursor = conn.cursor()
+    cursor.execute("SELECT id, titulo, cliente, matricula, total, estado, criado_em FROM orcamentos ORDER BY id DESC")
+    orcamentos = cursor.fetchall()
+    conn.close()
+
+    linhas_orc = ""
+    for r in orcamentos:
+        id_o, titulo, cli, mat, total, est, criado = r
+        
+        # Cor do estado
+        cor_est = "#f0ad4e" if est == "Pendente" else ("#28a745" if est == "Aprovado" else "#d9534f")
+        
+        # Mensagem WhatsApp formatada
+        msg_wa = f"Olá {cli}, o seu orçamento '{titulo}' na Centro Auto Sofisticar (Viatura: {mat}) tem o valor total de {total:.2f}€. Aguardamos a sua confirmação."
+        link_wa = f"https://wa.me/?text={msg_wa.replace(' ', '%20')}"
+
+        linhas_orc += f"""
+        <tr style="border-bottom:1px solid #333; background: #1a1a1a;">
+            <td style="padding:15px; font-weight:bold; color:#d4af37;">#{id_o}</td>
+            <td style="padding:15px;"><b>{cli}</b><br><small style="color:#aaa;">{mat}</small></td>
+            <td style="padding:15px;">{titulo}</td>
+            <td style="padding:15px; font-weight:bold; color:#28a745; font-size:16px;">{total:.2f} €</td>
+            <td style="padding:15px;">
+                <select onchange="window.location.href='/mudar_estado?id={id_o}&estado='+this.value+'&pin={pin}'" style="background:#2a2a2a; color:#fff; padding:6px; border-radius:4px; border:1px solid #555; font-weight:bold; color:{cor_est}; cursor:pointer;">
+                    <option value="Pendente" {'selected' if est == 'Pendente' else ''}>🟡 Pendente</option>
+                    <option value="Aprovado" {'selected' if est == 'Aprovado' else ''}>🟢 Aprovado</option>
+                    <option value="Recusado" {'selected' if est == 'Recusado' else ''}>🔴 Recusado</option>
+                </select>
+            </td>
+            <td style="padding:15px;">
+                <a href="/orcamento?id={id_o}" target="_blank" style="background:#333; color:#d4af37; padding:6px 10px; text-decoration:none; border-radius:4px; font-size:13px; margin-right:5px;">📄 PDF</a>
+                <a href="{link_wa}" target="_blank" style="background:#25D366; color:#fff; padding:6px 10px; text-decoration:none; border-radius:4px; font-size:13px; font-weight:bold; margin-right:5px;">📲 WhatsApp</a>
+                <form action="/apagar_orcamento" method="post" style="display:inline;">
+                    <input type="hidden" name="id_orcamento" value="{id_o}"><input type="hidden" name="pin" value="{pin}">
+                    <button type="submit" onclick="return confirm('Tem certeza que pretende apagar este orçamento?')" style="background:#8b0000; color:#fff; border:none; padding:6px 10px; border-radius:4px; cursor:pointer;">🗑️</button>
+                </form>
+            </td>
+        </tr>
+        """
+
+    return f"""
+    <!DOCTYPE html>
+    <html lang="pt">
+    <head>
+        <meta charset="UTF-8">
+        <title>Painel de Gestão - Centro Auto Sofisticar</title>
+        <style>
+            body {{ font-family: 'Segoe UI', sans-serif; background: #121212; color: #fff; margin: 0; padding: 0; }}
+            .header {{ background: linear-gradient(135deg, #1a1a1a, #000); padding: 25px 40px; border-bottom: 3px solid #d4af37; display: flex; align-items: center; justify-content: space-between; }}
+            .mascot-area {{ display: flex; align-items: center; }}
+            .content {{ padding: 30px; max-width: 1200px; margin: auto; }}
+            .btn-new {{ background: #d4af37; color: #121212; padding: 12px 20px; text-decoration: none; font-weight: bold; border-radius: 6px; box-shadow: 0 4px 10px rgba(212,175,55,0.3); }}
+            .btn-new:hover {{ background: #b8972f; }}
+            table {{ width: 100%; border-collapse: collapse; margin-top: 20px; background: #181818; border-radius: 8px; overflow: hidden; box-shadow: 0 4px 15px rgba(0,0,0,0.4); }}
+            th {{ background: #222; color: #d4af37; padding: 15px; text-align: left; font-size: 14px; border-bottom: 2px solid #333; }}
+        </style>
+    </head>
+    <body>
+        <div class="header">
+            <div class="mascot-area">
+                <span style="font-size: 45px; margin-right: 20px;">🏎️</span>
+                <div>
+                    <h1 style="margin:0; font-size: 24px; color:#fff;">Centro Auto Sofisticar</h1>
+                    <p style="margin:0; color:#d4af37; font-size: 13px;">Painel de Controlo & Performance</p>
+                </div>
+            </div>
+            <div>
+                <a href="/novo_orcamento?pin={pin}" class="btn-new">＋ Criar Novo Orçamento</a>
+            </div>
+        </div>
+
+        <div class="content">
+            <h2 style="color:#fff; margin-bottom: 20px;">📋 Orçamentos Registados</h2>
+            <table>
+                <tr>
+                    <th>ID</th>
+                    <th>Cliente / Matrícula</th>
+                    <th>Título / Avaria</th>
+                    <th>Total (c/ IVA)</th>
+                    <th>Estado</th>
+                    <th>Ações Rápidas</th>
+                </tr>
+                {linhas_orc if linhas_orc else '<tr><td colspan="6" style="text-align:center; padding:30px; color:#777;">Nenhum orçamento registado de momento.</td></tr>'}
+            </table>
+        </div>
+    </body>
+    </html>
+    """
+
 @app.get("/novo_orcamento", response_class=HTMLResponse)
 def form_orcamento(pin: str = ""):
     if pin != PIN_ACESSO:
-        return "<body style='background:#121212; color:#fff; font-family:sans-serif; text-align:center; padding-top:50px;'><h3>Acesso restrito. Insira o PIN correto no link (ex: /novo_orcamento?pin=1234)</h3></body>"
+        return "<body style='background:#121212; color:#fff; font-family:sans-serif; text-align:center; padding-top:50px;'><h3>Acesso restrito. Insira o PIN correto.</h3></body>"
 
     blocos_html = ""
     for categoria, itens in CATALOGO_COMPLETO.items():
@@ -146,10 +246,10 @@ def form_orcamento(pin: str = ""):
     <html lang="pt">
     <head>
         <meta charset="UTF-8">
-        <title>Criar Orçamento Detalhado</title>
+        <title>Criar Orçamento - Centro Auto Sofisticar</title>
         <style>
             body {{ font-family: 'Segoe UI', sans-serif; background: #121212; color: #fff; padding: 20px; }}
-            .container {{ max-width: 750px; margin: auto; background: #181818; padding: 30px; border-radius: 12px; border-top: 5px solid #d4af37; }}
+            .container {{ max-width: 750px; margin: auto; background: #181818; padding: 30px; border-radius: 12px; border-top: 5px solid #d4af37; box-shadow: 0 8px 20px rgba(0,0,0,0.5); }}
             input[type="text"], textarea {{ width: 100%; padding: 10px; background: #2a2a2a; border: 1px solid #555; border-radius: 6px; color: #fff; margin-bottom: 15px; box-sizing: border-box; }}
             button {{ background: #d4af37; color: #121212; border: none; padding: 12px 20px; font-weight: bold; border-radius: 6px; cursor: pointer; width: 100%; font-size: 16px; }}
             button:hover {{ background: #b8972f; }}
@@ -157,7 +257,10 @@ def form_orcamento(pin: str = ""):
     </head>
     <body>
         <div class="container">
-            <h2>🛠️ Criar Orçamento Personalizado</h2>
+            <div style="display:flex; align-items:center; margin-bottom: 15px;">
+                <span style="font-size: 30px; margin-right: 15px;">🏎️</span>
+                <h2 style="margin:0; color:#d4af37;">Novo Orçamento Detalhado</h2>
+            </div>
             <a href="/painel?pin={pin}" style="color:#d4af37; text-decoration:none; display:inline-block; margin-bottom:20px;">← Voltar ao Painel</a>
             
             <form action="/criar_orcamento" method="post">
@@ -202,7 +305,6 @@ def processar_criar_orcamento(
     if pin != PIN_ACESSO:
         return RedirectResponse(url="/painel", status_code=303)
 
-    # Calcular o subtotal somando os preços reais do catálogo
     subtotal = 0.0
     for peca in pecas_selecionadas:
         for cat, itens in CATALOGO_COMPLETO.items():
@@ -224,17 +326,26 @@ def processar_criar_orcamento(
 
     return RedirectResponse(url=f"/painel?pin={pin}", status_code=303)
 
-# 📄 VISUALIZAR / IMPRIMIR ORÇAMENTO EM PDF
+@app.get("/mudar_estado")
+def mudar_estado(id: int, estado: str, pin: str):
+    if pin == PIN_ACESSO:
+        conn = sqlite3.connect(DB_FILE)
+        cursor = conn.cursor()
+        cursor.execute("UPDATE orcamentos SET estado = ? WHERE id = ?", (estado, id))
+        conn.commit()
+        conn.close()
+    return RedirectResponse(url=f"/painel?pin={pin}", status_code=303)
+
 @app.get("/orcamento", response_class=HTMLResponse)
 def ver_orcamento(id: int):
     conn = sqlite3.connect(DB_FILE)
     cursor = conn.cursor()
-    cursor.execute("SELECT id, titulo, cliente, matricula, pecas, descricao, subtotal, iva, total, criado_em FROM orcamentos WHERE id = ?", (id,))
+    cursor.execute("SELECT id, titulo, cliente, matricula, pecas, descricao, subtotal, iva, total, estado, criado_em FROM orcamentos WHERE id = ?", (id,))
     reg = cursor.fetchone()
     conn.close()
 
     if not reg: return "<h3>Orçamento não encontrado.</h3>"
-    id_o, titulo, cli, mat, pecas, desc, sub, iva, total, criado = reg
+    id_o, titulo, cli, mat, pecas, desc, sub, iva, total, est, criado = reg
 
     itens_lista = "".join([f"<li>{p.strip()}</li>" for p in pecas.split(",") if p.strip()])
 
@@ -260,13 +371,17 @@ def ver_orcamento(id: int):
     </head>
     <body>
         <button onclick="window.print()" class="btn-print">🖨️ Imprimir / Guardar em PDF</button>
-        <h1>CENTRO AUTO SOFISTICAR</h1>
+        <div style="display:flex; align-items:center; margin-bottom: 5px;">
+            <span style="font-size: 30px; margin-right: 15px;">🏎️</span>
+            <h1 style="margin:0; border:none; padding:0;">CENTRO AUTO SOFISTICAR</h1>
+        </div>
         <div class="sub">Proposta de Orçamento Automóvel Nº {id_o} — {titulo}</div>
         
         <div class="box">
             <div class="field"><label>Cliente:</label> {cli}</div>
             <div class="field"><label>Viatura / Matrícula:</label> <b>{mat}</b></div>
             <div class="field"><label>Data:</label> {criado}</div>
+            <div class="field"><label>Estado:</label> <b>{est}</b></div>
         </div>
 
         <h3>Peças e Serviços Selecionados:</h3>
