@@ -1,23 +1,38 @@
-from fastapi import FastAPI, Request, Form
+from fastapi import FastAPI, Request, Form, Depends, HTTPException, status
 from fastapi.responses import HTMLResponse, RedirectResponse
+import sqlite3
+import os
 
 app = FastAPI(title="Centro Auto Sofisticar")
 
-# Base de dados em memória para agendamentos
-agendamentos = [
-    {
-        "id": 1,
-        "cliente": "João Silva",
-        "contacto": "912345678",
-        "matricula": "AA-00-AA",
-        "servico": "Lavagens - Lavagem Completa",
-        "data": "2026-08-15",
-        "hora": "10:00",
-        "estado": "Pendente",
-        "observacoes": "Limpeza interior e exterior",
-        "preco": "Sob Consulta"
-    }
-]
+# 🔒 Definir a palavra-passe do Painel de Gestão
+PIN_ACESSO = "1234"
+
+# 💾 Configuração da Base de Dados SQLite
+DB_FILE = "oficina.db"
+
+def init_db():
+    conn = sqlite3.connect(DB_FILE)
+    cursor = conn.cursor()
+    cursor.execute("""
+        CREATE TABLE IF NOT EXISTS agendamentos (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            cliente TEXT NOT NULL,
+            contacto TEXT NOT NULL,
+            matricula TEXT NOT NULL,
+            servico TEXT NOT NULL,
+            data TEXT NOT NULL,
+            hora TEXT NOT NULL,
+            estado TEXT DEFAULT 'Pendente',
+            observacoes TEXT,
+            preco TEXT DEFAULT 'Sob Consulta'
+        )
+    """)
+    conn.commit()
+    conn.close()
+
+# Inicializar a base de dados ao arrancar
+init_db()
 
 SERVICOS = [
     {"id": "mecanica", "nome": "Mecânica Geral / Manutenção", "preco": "Sob Consulta / Análise"},
@@ -105,7 +120,7 @@ def pagina_cliente(sucesso: bool = False):
     """
     return html
 
-# 📩 PROCESSAR AGENDAMENTO
+# 📩 PROCESSAR AGENDAMENTO (Grava na Base de Dados)
 @app.post("/agendar")
 def processar_agendamento(
     cliente: str = Form(...),
@@ -116,46 +131,81 @@ def processar_agendamento(
     hora: str = Form(...),
     observacoes: str = Form("")
 ):
-    novo_id = len(agendamentos) + 1
-    agendamentos.append({
-        "id": novo_id,
-        "cliente": cliente,
-        "contacto": contacto,
-        "matricula": matricula,
-        "servico": servico,
-        "data": data,
-        "hora": hora,
-        "estado": "Pendente",
-        "observacoes": observacoes,
-        "preco": "Sob Consulta"
-    })
+    conn = sqlite3.connect(DB_FILE)
+    cursor = conn.cursor()
+    cursor.execute("""
+        INSERT INTO agendamentos (cliente, contacto, matricula, servico, data, hora, observacoes)
+        VALUES (?, ?, ?, ?, ?, ?, ?)
+    """, (cliente, contacto, matricula, servico, data, hora, observacoes))
+    conn.commit()
+    conn.close()
+    
     return RedirectResponse(url="/cliente?sucesso=True", status_code=303)
 
-# 📊 PAINEL DA OFICINA
+# 📊 PAINEL DA OFICINA (Com Login / PIN de Segurança)
 @app.get("/painel", response_class=HTMLResponse)
-def pagina_painel():
+def pagina_painel(pin: str = ""):
+    # Se o PIN estiver incorreto ou não for preenchido, mostra formulário de login
+    if pin != PIN_ACESSO:
+        erro_html = '<p style="color: red; text-align: center;">❌ PIN Incorreto!</p>' if pin else ''
+        return f"""
+        <!DOCTYPE html>
+        <html lang="pt">
+        <head>
+            <meta charset="UTF-8">
+            <meta name="viewport" content="width=device-width, initial-scale=1.0">
+            <title>Acesso Restrito - Centro Auto Sofisticar</title>
+            <style>
+                body {{ font-family: sans-serif; background-color: #1a1a1a; display: flex; justify-content: center; align-items: center; height: 100vh; margin: 0; }}
+                .login-card {{ background: white; padding: 30px; border-radius: 10px; box-shadow: 0 4px 15px rgba(0,0,0,0.5); width: 300px; border-top: 5px solid #d4af37; }}
+                h3 {{ text-align: center; color: #1a1a1a; margin-top: 0; }}
+                input {{ width: 100%; padding: 12px; margin: 10px 0; border: 1px solid #ccc; border-radius: 5px; box-sizing: border-box; text-align: center; font-size: 18px; letter-spacing: 4px; }}
+                button {{ width: 100%; background: #1a1a1a; color: #d4af37; padding: 12px; border: 1px solid #d4af37; border-radius: 5px; font-size: 16px; font-weight: bold; cursor: pointer; }}
+                button:hover {{ background: #d4af37; color: #1a1a1a; }}
+            </style>
+        </head>
+        <body>
+            <div class="login-card">
+                <h3>🛠️ Área do Gestor</h3>
+                {erro_html}
+                <form action="/painel" method="get">
+                    <input type="password" name="pin" placeholder="Introduza o PIN" required autofocus>
+                    <button type="submit">ENTRAR</button>
+                </form>
+            </div>
+        </body>
+        </html>
+        """
+
+    # Se o PIN estiver correto, lê da Base de Dados
+    conn = sqlite3.connect(DB_FILE)
+    cursor = conn.cursor()
+    cursor.execute("SELECT id, cliente, contacto, matricula, servico, data, hora, observacoes, estado FROM agendamentos ORDER BY id DESC")
+    registos = cursor.fetchall()
+    conn.close()
+
     linhas_tabela = ""
-    for item in reversed(agendamentos):
-        cor_badge = "#ffc107" if item["estado"] == "Pendente" else "#28a745"
+    for item in registos:
+        id_item, cliente, contacto, matricula, servico, data, hora, observacoes, estado = item
+        cor_badge = "#ffc107" if estado == "Pendente" else "#28a745"
         
-        # Destaque visual por área de serviço
         estilo_linha = ""
-        if "Lavagens" in item["servico"]:
+        if "Lavagens" in servico:
             estilo_linha = "background-color: #e3f2fd;"
-        elif "Polimento" in item["servico"]:
+        elif "Polimento" in servico:
             estilo_linha = "background-color: #f3e5f5;"
-        elif "Elétrica" in item["servico"] or "Ar Condicionado" in item["servico"]:
+        elif "Elétrica" in servico or "Ar Condicionado" in servico:
             estilo_linha = "background-color: #fffde7;"
 
         linhas_tabela += f"""
         <tr style="{estilo_linha}">
-            <td>#{item['id']}</td>
-            <td><b>{item['cliente']}</b><br><small>{item['contacto']}</small></td>
-            <td><span style="background: #333; color: white; padding: 3px 8px; border-radius: 4px; font-weight: bold;">{item['matricula']}</span></td>
-            <td><b>{item['servico']}</b></td>
-            <td>{item['data']} às {item['hora']}</td>
-            <td><i>{item['observacoes'] or '-'}</i></td>
-            <td><span style="background-color: {cor_badge}; color: black; padding: 5px 10px; border-radius: 12px; font-weight: bold; font-size: 12px;">{item['estado']}</span></td>
+            <td>#{id_item}</td>
+            <td><b>{cliente}</b><br><small>{contacto}</small></td>
+            <td><span style="background: #333; color: white; padding: 3px 8px; border-radius: 4px; font-weight: bold;">{matricula}</span></td>
+            <td><b>{servico}</b></td>
+            <td>{data} às {hora}</td>
+            <td><i>{observacoes or '-'}</i></td>
+            <td><span style="background-color: {cor_badge}; color: black; padding: 5px 10px; border-radius: 12px; font-weight: bold; font-size: 12px;">{estado}</span></td>
         </tr>
         """
 
@@ -178,7 +228,7 @@ def pagina_painel():
     <body>
         <div class="header">
             <h2>🛠️ Painel de Gestão - Centro Auto Sofisticar</h2>
-            <span>Agendamentos Totais: <b>{len(agendamentos)}</b></span>
+            <span>Agendamentos Totais: <b>{len(registos)}</b></span>
         </div>
         <table>
             <thead>
@@ -193,7 +243,7 @@ def pagina_painel():
                 </tr>
             </thead>
             <tbody>
-                {linhas_tabela}
+                {linhas_tabela if linhas_tabela else '<tr><td colspan="7" style="text-align:center;">Nenhum agendamento registado até ao momento.</td></tr>'}
             </tbody>
         </table>
     </body>
