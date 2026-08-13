@@ -239,7 +239,14 @@ def pagina_painel(pin: str = ""):
     for item in registos:
         id_item, cliente, contacto, matricula, servico, data, hora, observacoes, estado = item
         
+        # Cor do badge
         cor_badge = "#ffc107" if estado == "Pendente" else ("#17a2b8" if estado == "Confirmado" else ("#28a745" if estado == "Concluído" else "#dc3545"))
+
+        # Seleção correta dos estados para evitar erros de sintaxe no f-string
+        sel_pend = 'selected' if estado == 'Pendente' else ''
+        sel_conf = 'selected' if estado == 'Confirmado' else ''
+        sel_conc = 'selected' if estado == 'Concluído' else ''
+        sel_canc = 'selected' if estado == 'Cancelado' else ''
 
         linhas_tabela += f"""
         <tr>
@@ -254,10 +261,10 @@ def pagina_painel(pin: str = ""):
                     <input type="hidden" name="id_agendamento" value="{id_item}">
                     <input type="hidden" name="pin" value="{pin}">
                     <select name="novo_estado" onchange="this.form.submit()" style="background-color: {cor_badge}; color: black; font-weight: bold; padding: 6px 10px; border-radius: 6px; cursor: pointer; border: 1px solid #ccc;">
-                        <option value="Pendente" {'selected' if estado == 'Pendente' else ''}>🟡 Pendente</option>
-                        <option value="Confirmado" {'selected' if estado == 'Confirmado' else ''}>🔵 Confirmado (SMS)</option>
-                        <option value="Concluído" {'selected' if estado == 'Concluído' else ''}>🟢 Concluído</option>
-                        <option value="Cancelado" {'selected' if estado == 'Cancelado' else ''}>🔴 Cancelado</option>
+                        <option value="Pendente" {sel_pend}>🟡 Pendente</option>
+                        <option value="Confirmado" {sel_conf}>🔵 Confirmado (SMS)</option>
+                        <option value="Concluído" {sel_conc}>🟢 Concluído</option>
+                        <option value="Cancelado" {sel_canc}>🔴 Cancelado</option>
                     </select>
                 </form>
             </td>
