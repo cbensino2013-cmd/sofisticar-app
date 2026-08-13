@@ -1,0 +1,238 @@
+<!DOCTYPE html>
+<html lang="pt">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Auto Centro Brascar | Serviços Automóveis e Revisão</title>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;600;700;800&display=swap" rel="stylesheet">
+  <style>
+    :root {
+      --primary: #dc2626;
+      --primary-hover: #b91c1c;
+      --dark: #0f172a;
+      --card-bg: #1e293b;
+      --text: #f8fafc;
+      --text-muted: #94a3b8;
+      --accent: #2563eb;
+    }
+
+    * { box-sizing: border-box; font-family: 'Inter', sans-serif; margin: 0; padding: 0; }
+    body { background-color: #0b0f19; color: var(--text); line-height: 1.6; }
+
+    /* Top Bar */
+    .top-bar { background: #070a12; padding: 8px 5%; display: flex; justify-content: space-between; font-size: 13px; color: var(--text-muted); border-bottom: 1px solid #1e293b; }
+    .top-bar span { font-weight: 600; color: #ef4444; }
+
+    /* Header / Nav */
+    header { background: var(--dark); padding: 12px 5%; display: flex; justify-content: space-between; align-items: center; border-bottom: 2px solid var(--primary); position: sticky; top: 0; z-index: 100; box-shadow: 0 4px 20px rgba(0,0,0,0.5); }
+    .logo-container { display: flex; align-items: center; gap: 15px; text-decoration: none; }
+    .logo-img { height: 55px; object-fit: contain; }
+    
+    nav { display: flex; align-items: center; gap: 20px; }
+    nav a { color: var(--text); text-decoration: none; font-size: 14px; font-weight: 600; transition: 0.2s; }
+    nav a:hover { color: var(--primary); }
+    .btn-nav { background: var(--primary); padding: 10px 18px; border-radius: 6px; color: white !important; font-weight: 700; }
+
+    /* Hero Section */
+    .hero { background: linear-gradient(180deg, rgba(15,23,42,0.9) 0%, rgba(11,15,25,1) 100%), url('https://images.unsplash.com/photo-1486006920555-c77dce18193b?q=80&w=1600') center/cover; padding: 70px 5% 50px 5%; text-align: center; }
+    .hero h1 { font-size: 40px; font-weight: 800; margin-bottom: 15px; letter-spacing: -1px; }
+    .hero h1 span { color: var(--primary); }
+    .hero p { font-size: 17px; color: var(--text-muted); max-width: 650px; margin: 0 auto 30px auto; }
+
+    /* Container Principal */
+    .container { max-width: 1200px; margin: -20px auto 60px auto; padding: 0 20px; }
+
+    /* Cards de Serviços */
+    .grid-servicos { display: grid; grid-template-columns: repeat(auto-fit, minmax(260px, 1fr)); gap: 20px; margin-bottom: 40px; }
+    .card-servico { background: var(--card-bg); border: 1px solid #334155; border-radius: 12px; padding: 25px; transition: transform 0.2s, border-color 0.2s; position: relative; overflow: hidden; }
+    .card-servico:hover { transform: translateY(-5px); border-color: var(--primary); }
+    .card-icon { font-size: 32px; margin-bottom: 15px; }
+    .card-title { font-size: 18px; font-weight: 700; margin-bottom: 8px; }
+    .card-desc { font-size: 13px; color: var(--text-muted); margin-bottom: 20px; min-height: 40px; }
+    .card-price { font-size: 22px; font-weight: 800; color: #38bdf8; display: flex; justify-content: space-between; align-items: center; }
+    .btn-select { background: #334155; border: none; color: white; padding: 8px 14px; border-radius: 6px; font-size: 12px; font-weight: 700; cursor: pointer; }
+    .card-servico:hover .btn-select { background: var(--primary); }
+
+    /* Formulário Estilizado */
+    .form-box { background: var(--card-bg); border: 1px solid #334155; border-radius: 12px; padding: 35px; box-shadow: 0 10px 30px rgba(0,0,0,0.3); }
+    .form-title { font-size: 22px; font-weight: 700; margin-bottom: 20px; border-left: 4px solid var(--primary); padding-left: 12px; }
+    
+    .form-group { margin-bottom: 20px; }
+    .form-group label { display: block; font-size: 13px; font-weight: 600; color: var(--text-muted); margin-bottom: 8px; text-transform: uppercase; }
+    .form-control { width: 100%; padding: 14px; background: #0f172a; border: 1px solid #334155; border-radius: 8px; color: white; font-size: 15px; }
+    .form-control:focus { border-color: var(--primary); outline: none; }
+
+    .btn-submit { width: 100%; background: var(--primary); color: white; border: none; padding: 16px; border-radius: 8px; font-size: 16px; font-weight: 800; cursor: pointer; transition: 0.2s; text-transform: uppercase; letter-spacing: 0.5px; }
+    .btn-submit:hover { background: var(--primary-hover); }
+
+    /* Features/Garantias */
+    .features { display: grid; grid-template-columns: repeat(3, 1fr); gap: 20px; margin-top: 50px; text-align: center; }
+    .feature-item { background: #0f172a; padding: 20px; border-radius: 8px; border: 1px solid #1e293b; }
+    .feature-item h4 { font-size: 15px; margin-bottom: 5px; color: #fff; }
+    .feature-item p { font-size: 12px; color: var(--text-muted); }
+
+    /* Footer */
+    footer { background: #070a12; border-top: 1px solid #1e293b; padding: 30px 5%; text-align: center; font-size: 13px; color: var(--text-muted); margin-top: 60px; }
+  </style>
+</head>
+<body>
+
+  <!-- Top Bar Contactos -->
+  <div class="top-bar">
+    <div>📍 Auto Centro Brascar | Oficina Multimarca Profissional</div>
+    <div>📞 Apoio ao Cliente: <span>243 000 000</span> | 🕒 Seg-Sáb: 08:00 - 19:00</div>
+  </div>
+
+  <!-- Header com o Novo Logótipo Oficial -->
+  <header>
+    <a href="#" class="logo-container">
+      <img src="/logo.png" alt="Auto Centro Brascar" class="logo-img">
+    </a>
+    <nav>
+      <a href="#servicos">Serviços</a>
+      <a href="#agendamento">Marcar Oficina</a>
+      <a href="/painel" class="btn-nav">Área Reservada / Gestão</a>
+    </nav>
+  </header>
+
+  <!-- Hero Section -->
+  <section class="hero">
+    <h1>Manutenção e Reparação <span>Automóvel de Confiança</span></h1>
+    <p>Agende a revisão ou reparação da sua viatura em segundos. Transparência de preços e serviço garantido.</p>
+  </section>
+
+  <div class="container">
+
+    <!-- Seção de Serviços Destacados -->
+    <h2 id="servicos" style="font-size: 22px; margin-bottom: 20px; font-weight: 700;">Os Nossos Serviços Principais</h2>
+    <div class="grid-servicos">
+      <div class="card-servico">
+        <div class="card-icon">🛠️</div>
+        <div class="card-title">Revisão Oficial</div>
+        <div class="card-desc">Mudança de óleo, filtros e check-up a 30 pontos de segurança.</div>
+        <div class="card-price">89.90 € <button class="btn-select" onclick="selecionarServico(1)">Selecionar</button></div>
+      </div>
+
+      <div class="card-servico">
+        <div class="card-icon">❄️</div>
+        <div class="card-title">Ar Condicionado</div>
+        <div class="card-desc">Carregamento de gás, higienização de condutas e teste de estanqueidade.</div>
+        <div class="card-price">49.90 € <button class="btn-select" onclick="selecionarServico(2)">Selecionar</button></div>
+      </div>
+
+      <div class="card-servico">
+        <div class="card-icon">🛑</div>
+        <div class="card-title">Sistema de Travagem</div>
+        <div class="card-desc">Substituição de calços, discos e verificação do líquido de travões.</div>
+        <div class="card-price">65.00 € <button class="btn-select" onclick="selecionarServico(3)">Selecionar</button></div>
+      </div>
+
+      <div class="card-servico">
+        <div class="card-icon">🚗</div>
+        <div class="card-title">Pneus & Alinhamento</div>
+        <div class="card-desc">Alinhamento de direção 3D e montagem/equilíbrio de rodas.</div>
+        <div class="card-price">35.00 € <button class="btn-select" onclick="selecionarServico(4)">Selecionar</button></div>
+      </div>
+    </div>
+
+    <!-- Formulário Principal de Agendamento -->
+    <div class="form-box" id="agendamento">
+      <div class="form-title">Marcar Agendamento na Oficina</div>
+      <form id="formAgendar" onsubmit="submeterAgendamento(event)">
+        
+        <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 20px;">
+          <div class="form-group">
+            <label>Nome do Cliente</label>
+            <input type="text" id="nome" class="form-control" placeholder="Ex: António Andrade" required>
+          </div>
+          <div class="form-group">
+            <label>Telemóvel para Contacto</label>
+            <input type="tel" id="telefone" class="form-control" placeholder="Ex: 912345678" required>
+          </div>
+        </div>
+
+        <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 20px;">
+          <div class="form-group">
+            <label>Matrícula do Veículo</label>
+            <input type="text" id="matricula" class="form-control" placeholder="Ex: 00-AA-00" required>
+          </div>
+          <div class="form-group">
+            <label>Serviço Pretendido</label>
+            <select id="servico_id" class="form-control" required>
+              <option value="1">Revisão Oficial — 89.90 €</option>
+              <option value="2">Carregamento Ar Condicionado — 49.90 €</option>
+              <option value="3">Sistema de Travagem — 65.00 €</option>
+              <option value="4">Pneus & Alinhamento — 35.00 €</option>
+            </select>
+          </div>
+        </div>
+
+        <div class="form-group">
+          <label>Data e Hora Preferencial</label>
+          <input type="datetime-local" id="data_hora" class="form-control" required>
+        </div>
+
+        <button type="submit" class="btn-submit">Confirmar Agendamento e Reservar Rampa</button>
+      </form>
+    </div>
+
+    <!-- Garantias Estilo Norauto -->
+    <div class="features">
+      <div class="feature-item">
+        <h4>⚡ Atendimento Rápido</h4>
+        <p>Garantia de cumprimento de horários e entregas no próprio dia.</p>
+      </div>
+      <div class="feature-item">
+        <h4>🛡️ Peças Homologadas</h4>
+        <p>Componentes com garantia de fabricante de 2 anos.</p>
+      </div>
+      <div class="feature-item">
+        <h4>💶 Preço Fechado</h4>
+        <p>Sem surpresas na fatura. O valor orçamentado é o valor final.</p>
+      </div>
+    </div>
+
+  </div>
+
+  <footer>
+    <p>© 2026 Auto Centro Brascar. Todos os direitos reservados. Gestão Profissional de Oficinas.</p>
+  </footer>
+
+  <script>
+    function selecionarServico(id) {
+      document.getElementById('servico_id').value = id;
+      document.getElementById('agendamento').scrollIntoView({ behavior: 'smooth' });
+    }
+
+    async function submeterAgendamento(e) {
+      e.preventDefault();
+      
+      const payload = {
+        cliente_nome: document.getElementById('nome').value,
+        telefone: document.getElementById('telefone').value,
+        matricula: document.getElementById('matricula').value,
+        servico_id: parseInt(document.getElementById('servico_id').value),
+        data_hora_inicio: document.getElementById('data_hora').value
+      };
+
+      try {
+        const response = await fetch('/agendamentos/criar', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(payload)
+        });
+
+        if (response.ok) {
+          alert("✅ Agendamento efetuado com sucesso no Auto Centro Brascar!");
+          document.getElementById('formAgendar').reset();
+        } else {
+          const err = await response.json();
+          alert("❌ " + (err.detail || "Erro ao efetuar agendamento."));
+        }
+      } catch (err) {
+        alert("Erro de ligação ao servidor.");
+      }
+    }
+  </script>
+</body>
+</html>
