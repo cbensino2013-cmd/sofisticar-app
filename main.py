@@ -123,6 +123,7 @@ def pagina_cliente(sucesso: bool = False):
             .info-box {{ background: #262626; padding: 12px; border-left: 4px solid #d4af37; margin-top: 10px; border-radius: 4px; font-size: 14px; display: none; }}
             button {{ width: 100%; background: #d4af37; color: #121212; border: none; padding: 15px; border-radius: 6px; font-size: 16px; font-weight: bold; margin-top: 25px; cursor: pointer; transition: 0.3s; }}
             button:hover {{ background: #f3c63f; }}
+            .rgpd-notice {{ font-size: 12px; color: #888; text-align: center; margin-top: 15px; line-height: 1.4; }}
         </style>
         <script>
             const infoServicos = {SERVICOS};
@@ -181,6 +182,10 @@ def pagina_cliente(sucesso: bool = False):
                 <textarea name="observacoes" rows="3" placeholder="Ex: Ruído na travagem, estofos em pele..."></textarea>
 
                 <button type="submit">SUBMETER AGENDAMENTO</button>
+
+                <div class="rgpd-notice">
+                    🔒 <b>Proteção de Dados:</b> Em conformidade com o RGPD, os seus dados são recolhidos apenas para a gestão do agendamento e serão automaticamente eliminados do nosso sistema após 30 dias.
+                </div>
             </form>
         </div>
     </body>
@@ -223,7 +228,7 @@ def acompanhar_estado(matricula: str = ""):
             </div>
             """
         else:
-            resultado_html = '<p style="color: #ff6b6b; text-align: center; margin-top: 20px;">❌ Nenhuma viatura encontrada com essa matrícula (ou o registo já expirou).</p>'
+            resultado_html = '<p style="color: #ff6b6b; text-align: center; margin-top: 20px;">❌ Nenhuma viatura encontrada com essa matrícula (ou o registo foi eliminado após o prazo de 30 dias).</p>'
 
     return f"""
     <!DOCTYPE html>
