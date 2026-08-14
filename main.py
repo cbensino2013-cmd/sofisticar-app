@@ -1,376 +1,271 @@
 from fastapi import FastAPI, Request, Form
 from fastapi.responses import HTMLResponse, RedirectResponse
-import sqlite3
-import os
-import random
-from datetime import datetime
 
-app = FastAPI(title="Centro Auto Sofisticar - Enterprise Edition")
-DB_FILE = "oficina.db"
+app = FastAPI(title="Centro Auto Sofisticar - Completo")
 
-# Sistema de Código Dinâmico de Acesso Temporário para o Gestor
-ESTADO_SESSAO = {"codigo_atual": "7788", "autenticado": False}
+# PIN Secreto da Empresa (Podes alterar aqui para a tua senha privada)
+PIN_ADMIN = "1234"
 
-# Catálogo exato com os serviços e produtos que a oficina oferece
-CATALOGO_COMPLETO = {
-    "🛞 Pneus & Direção": {
-        "Pneu 175/65 R14": {"preco": 50.00, "stock": 12},
-        "Pneu 195/65 R15": {"preco": 65.00, "stock": 8},
-        "Pneu 205/55 R16": {"preco": 85.00, "stock": 20},
-        "Alinhamento de Direção": {"preco": 35.00, "stock": 999}
-    },
-    "🛑 Sistema de Travões": {
-        "Pastilhas de Travão (Frente)": {"preco": 55.00, "stock": 10},
-        "Pastilhas de Travão (Traseiras)": {"preco": 45.00, "stock": 8},
-        "Discos de Travão (Par)": {"preco": 90.00, "stock": 6},
-        "Líquido de Travões": {"preco": 15.00, "stock": 15}
-    },
-    "🛢️ Óleos e Filtros (Revisão)": {
-        "Óleo Motor 5W30 (5L)": {"preco": 50.00, "stock": 25},
-        "Filtro de Óleo": {"preco": 15.00, "stock": 18},
-        "Filtro de Ar": {"preco": 20.00, "stock": 14},
-        "Filtro Habitáculo": {"preco": 25.00, "stock": 10}
-    },
-    "⚡ Eletricidade & Baterias": {
-        "Bateria 12V 60Ah": {"preco": 85.00, "stock": 5},
-        "Velas de Ignição (Jogo)": {"preco": 40.00, "stock": 7}
-    },
-    "🔧 Mão de Obra e Diagnóstico": {
-        "Diagnóstico Eletrónico": {"preco": 30.00, "stock": 999},
-        "Mão de Obra Especializada (Hora)": {"preco": 35.00, "stock": 999}
+# Base de dados em memória
+agendamentos = [
+    {
+        "id": 1,
+        "cliente": "João Silva",
+        "contacto": "912345678",
+        "matricula": "AA-00-AA",
+        "servico": "Lavagens - Lavagem Completa",
+        "data": "2026-08-15",
+        "hora": "10:00",
+        "estado": "Pendente",
+        "observacoes": "Limpeza interior e exterior"
     }
-}
+]
 
-def init_db():
-    conn = sqlite3.connect(DB_FILE)
-    cursor = conn.cursor()
-    cursor.execute("""
-        CREATE TABLE IF NOT EXISTS agendamentos (
-            id INTEGER PRIMARY KEY AUTOINCREMENT,
-            codigo_seguimento TEXT UNIQUE,
-            cliente TEXT NOT NULL,
-            contacto TEXT NOT NULL,
-            matricula TEXT NOT NULL,
-            servico TEXT NOT NULL,
-            data TEXT NOT NULL,
-            hora TEXT NOT NULL,
-            estado TEXT DEFAULT 'Pendente',
-            observacoes TEXT,
-            criado_em DATETIME DEFAULT CURRENT_TIMESTAMP
-        )
-    """)
-    cursor.execute("""
-        CREATE TABLE IF NOT EXISTS orcamentos (
-            id INTEGER PRIMARY KEY AUTOINCREMENT,
-            titulo TEXT NOT NULL,
-            cliente TEXT NOT NULL,
-            matricula TEXT NOT NULL,
-            pecas TEXT NOT NULL,
-            descricao TEXT,
-            subtotal REAL NOT NULL,
-            desconto REAL NOT NULL,
-            iva REAL NOT NULL,
-            total REAL NOT NULL,
-            criado_em DATETIME DEFAULT CURRENT_TIMESTAMP
-        )
-    """)
-    conn.commit()
-    conn.close()
+SERVICOS = [
+    {"id": "mecanica", "nome": "Mecânica Geral / Manutenção", "preco": "Sob Consulta / Análise"},
+    {"id": "eletrica", "nome": "Elétrica Auto & Diagnóstico", "preco": "Sob Consulta / Análise"},
+    {"id": "ac", "nome": "Ar Condicionado (Carga e Manutenção)", "preco": "Sob Consulta / Análise"},
+    {"id": "polimento", "nome": "Polimento e Detalhe Automóvel", "preco": "Sob Consulta / Análise"},
+    {"id": "lavagem_simples", "nome": "Lavagens - Exterior", "preco": "Sob Consulta / Análise"},
+    {"id": "lavagem_completa", "nome": "Lavagens - Completa (Interior + Exterior)", "preco": "Sob Consulta / Análise"},
+    {"id": "higienizacao", "nome": "Lavagens - Higienização de Estofos", "preco": "Sob Consulta / Análise"},
+]
 
-init_db()
-
-# 🌐 1. PORTAL DO CLIENTE (Layout Inspirado nas Referências Visuais)
-@app.get("/", response_class=HTMLResponse)
-def portal_cliente():
+def get_css():
     return """
+    <style>
+        body { font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; background-color: #1a1a1a; margin: 0; padding: 20px; color: #333; }
+        .container { max-width: 700px; margin: 0 auto; background: white; padding: 30px; border-radius: 12px; box-shadow: 0 4px 25px rgba(0,0,0,0.4); border-top: 6px solid #d4af37; margin-bottom: 30px; }
+        h1 { color: #1a1a1a; text-align: center; margin-bottom: 2px; font-size: 26px; text-transform: uppercase; letter-spacing: 1px; }
+        .slogan { text-align: center; color: #d4af37; font-weight: bold; margin-top: 0; font-size: 14px; margin-bottom: 20px; text-transform: uppercase; }
+        label { font-weight: bold; display: block; margin-top: 15px; margin-bottom: 5px; color: #444; }
+        input, select, textarea { width: 100%; padding: 12px; border: 1px solid #ccc; border-radius: 6px; box-sizing: border-box; font-size: 15px; }
+        button { width: 100%; background-color: #1a1a1a; color: #d4af37; border: 2px solid #d4af37; padding: 15px; border-radius: 6px; font-size: 16px; font-weight: bold; margin-top: 25px; cursor: pointer; transition: 0.3s; }
+        button:hover { background-color: #d4af37; color: #1a1a1a; }
+        .badge-info { background: #f4f4f4; padding: 10px; border-radius: 6px; font-size: 13px; color: #666; margin-top: 5px; border-left: 3px solid #d4af37; }
+        .search-box { background: #f9f9f9; padding: 20px; border-radius: 8px; border: 1px solid #ddd; margin-bottom: 25px; }
+        .btn-voltar { display: inline-block; background: #1a1a1a; color: #d4af37; padding: 10px 20px; text-decoration: none; border-radius: 6px; font-weight: bold; margin-bottom: 20px; border: 1px solid #d4af37; }
+        
+        .painel-body { background-color: #f8f9fa; }
+        .painel-container { max-width: 1200px; margin: 0 auto; background: white; padding: 30px; border-radius: 12px; box-shadow: 0 4px 25px rgba(0,0,0,0.1); }
+        .header-painel { display: flex; justify-content: space-between; align-items: center; background: #1a1a1a; color: white; padding: 15px 25px; border-radius: 8px; margin-bottom: 25px; border-bottom: 4px solid #d4af37; }
+        table { width: 100%; border-collapse: collapse; background: white; border-radius: 8px; overflow: hidden; }
+        th, td { padding: 14px 15px; text-align: left; border-bottom: 1px solid #dee2e6; }
+        th { background-color: #e9ecef; color: #495057; }
+        .btn { padding: 6px 12px; border-radius: 4px; text-decoration: none; font-weight: bold; font-size: 12px; color: white; display: inline-block; margin-right: 5px; }
+        .btn-iniciar { background-color: #007bff; }
+        .btn-concluir { background-color: #28a745; }
+        .btn-wpp { background-color: #25d366; display: inline-block; margin-top: 5px; }
+    </style>
+    """
+
+@app.get("/", response_class=HTMLResponse)
+def inicio():
+    return RedirectResponse(url="/cliente")
+
+# 📱 PORTAL DO CLIENTE
+@app.get("/cliente", response_class=HTMLResponse)
+def pagina_cliente(sucesso: bool = False, erro: str = None):
+    opcoes_servicos = "".join(
+        f'<option value="{s["nome"]}">{s["nome"]} — [{s["preco"]}]</option>' for s in SERVICOS
+    )
+    
+    mensagem_alerta = ""
+    if sucesso:
+        mensagem_alerta = '<div style="background-color: #d4edda; color: #155724; padding: 15px; border-radius: 8px; margin-bottom: 20px; text-align: center; font-weight: bold;">✅ Agendamento enviado com sucesso!</div>'
+    elif erro:
+        mensagem_alerta = f'<div style="background-color: #f8d7da; color: #721c24; padding: 15px; border-radius: 8px; margin-bottom: 20px; text-align: center; font-weight: bold;">❌ {erro}</div>'
+
+    return f"""
     <!DOCTYPE html>
     <html lang="pt">
     <head>
         <meta charset="UTF-8">
-        <meta name="viewport" content="width=device-width, initial-scale=1.0">
-        <title>Centro Auto Sofisticar - Portal Oficial</title>
-        <style>
-            body { font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; background: #121212; color: #fff; margin: 0; padding: 0; }
-            /* Barra de topo promocional amarela */
-            .top-bar { background: #d4af37; color: #121212; text-align: center; padding: 8px; font-weight: bold; font-size: 13px; }
-            /* Header principal estilo e-commerce profissional */
-            header { background: #181818; border-bottom: 2px solid #333; padding: 15px 40px; display: flex; justify-content: space-between; align-items: center; }
-            .brand { display: flex; align-items: center; gap: 12px; text-decoration: none; }
-            .logo-box { background: #d4af37; color: #121212; font-weight: bold; padding: 10px 14px; border-radius: 6px; font-size: 18px; letter-spacing: 1px; }
-            .brand h1 { margin: 0; color: #d4af37; font-size: 18px; line-height: 1.1; }
-            .brand p { margin: 0; color: #aaa; font-size: 10px; text-transform: uppercase; }
-            
-            .header-search { display: flex; align-items: center; background: #fff; border-radius: 30px; width: 400px; padding: 4px 15px; }
-            .header-search input { border: none; outline: none; width: 100%; padding: 8px; font-size: 14px; color: #333; background: transparent; }
-            
-            .header-links { display: flex; align-items: center; gap: 25px; font-size: 13px; color: #ccc; }
-            .header-links a { color: #ccc; text-decoration: none; display: flex; align-items: center; gap: 6px; transition: 0.2s; }
-            .header-links a:hover { color: #d4af37; }
-            .btn-gestor { border: 1px solid #d4af37; padding: 6px 14px; border-radius: 6px; color: #d4af37 !important; font-weight: bold; }
-
-            .hero { background: linear-gradient(rgba(0,0,0,0.8), rgba(0,0,0,0.8)), url('https://images.unsplash.com/photo-1486006920555-c77dce18193b?auto=format&fit=crop&w=1200&q=80'); background-size: cover; padding: 45px 20px; text-align: center; }
-            
-            .container { max-width: 850px; margin: -25px auto 40px auto; background: #1e1e1e; padding: 35px; border-radius: 12px; border: 1px solid #333; box-shadow: 0 10px 30px rgba(0,0,0,0.6); position: relative; }
-            .form-group { margin-bottom: 18px; }
-            label { display: block; margin-bottom: 6px; font-weight: bold; color: #ddd; font-size: 14px; }
-            input, select, textarea { width: 100%; padding: 12px; background: #2a2a2a; border: 1px solid #444; border-radius: 6px; color: #fff; box-sizing: border-box; font-size: 14px; }
-            input:focus, select:focus { border-color: #d4af37; outline: none; }
-            button { background: #d4af37; color: #121212; border: none; padding: 14px; font-weight: bold; font-size: 16px; border-radius: 6px; cursor: pointer; width: 100%; transition: 0.2s; }
-            button:hover { background: #b8972f; }
-            .grid-2 { display: grid; grid-template-columns: 1fr 1fr; gap: 15px; }
-            .box-search { background: #181818; padding: 20px; border-radius: 8px; border: 1px solid #444; margin-bottom: 30px; text-align: center; }
-            .gdpr { font-size: 12px; color: #888; background: #151515; padding: 12px; border-radius: 6px; border-left: 3px solid #d4af37; margin-bottom: 20px; }
-            
-            /* Rodapé idêntico aos portais profissionais */
-            footer { background: #151515; border-top: 1px solid #333; padding: 30px 40px; margin-top: 50px; color: #888; font-size: 12px; text-align: center; }
-            .footer-links { display: flex; justify-content: center; gap: 20px; margin-bottom: 15px; flex-wrap: wrap; }
-            .footer-links a { color: #aaa; text-decoration: none; }
-            .footer-links a:hover { color: #d4af37; text-decoration: underline; }
-        </style>
+        <title>Centro Auto Sofisticar - Portal do Cliente</title>
+        {get_css()}
     </head>
     <body>
-        <div class="top-bar">🔥 Campanha de Verão: Revisão Oficial com 15% de Desconto em Peças Selecionadas!</div>
-        
-        <header>
-            <a href="/" class="brand">
-                <div class="logo-box">CAS</div>
-                <div>
-                    <h1>CENTRO AUTO SOFISTICAR</h1>
-                    <p>Oficina Oficial & Multimarca</p>
-                </div>
-            </a>
-
-            <div class="header-search">
-                <input type="text" placeholder="O que procura? (ex: Pneus, Óleos, Travões...)">
-                <span style="color: #666; font-size: 16px;">🔍</span>
-            </div>
-
-            <div class="header-links">
-                <a href="#agendar">📍 Os Nossos Serviços</a>
-                <a href="/login_gestor" class="btn-gestor">🔒 Área Gestor</a>
-            </div>
-        </header>
-
-        <div class="hero">
-            <h2 style="color: #d4af37; margin-bottom: 5px; font-size: 28px;">Portal Oficial do Cliente</h2>
-            <p>Agende os nossos serviços especializados ou consulte o histórico da sua viatura em tempo real.</p>
-        </div>
-
-        <div class="container" id="agendar">
-            <div class="box-search">
-                <h4 style="color:#d4af37; margin-top:0;">🔍 Acompanhar Estado ou Consultar Histórico</h4>
-                <p style="font-size:13px; color:#aaa;">Insira o seu Código de Seguimento ou a Matrícula da viatura:</p>
-                <form action="/seguir" method="get" style="display: flex; gap: 10px;">
-                    <input type="text" name="codigo" placeholder="Ex: CAS-5819 ou 00-AA-00" required style="margin-bottom:0; text-transform:uppercase;">
-                    <button type="submit" style="width: 160px; padding: 10px;">Consultar</button>
+        <div class="container">
+            <h1>CENTRO AUTO SOFISTICAR</h1>
+            <div class="slogan">Portal Oficial do Cliente</div>
+            
+            <div class="search-box">
+                <h3 style="margin-top:0; color:#1a1a1a; font-size:16px;">🔍 Consultar o Estado da minha Viatura</h3>
+                <form action="/consultar_cliente" method="get" style="display:flex; gap:10px;">
+                    <input type="text" name="matricula" placeholder="Insira a matrícula (ex: AA-00-AA)" required style="margin:0; text-transform:uppercase;">
+                    <button type="submit" style="margin:0; width:140px; padding:10px; font-size:14px;">Consultar</button>
                 </form>
             </div>
 
-            <h3 style="color: #d4af37; border-bottom: 1px solid #333; padding-bottom: 10px; margin-top:0;">📅 Agendar Novo Serviço</h3>
+            {mensagem_alerta}
             
+            <h3 style="border-bottom: 2px solid #d4af37; padding-bottom: 8px; color:#1a1a1a;">📅 Marcar Novo Serviço</h3>
             <form action="/agendar" method="post">
-                <div class="grid-2">
-                    <div class="form-group">
-                        <label>Nome do Cliente:</label>
-                        <input type="text" name="cliente" placeholder="Nome completo" required>
-                    </div>
-                    <div class="form-group">
-                        <label>Contacto Telefónico:</label>
-                        <input type="text" name="contacto" placeholder="912345678" required>
-                    </div>
-                </div>
+                <label for="cliente">Nome Completo:</label>
+                <input type="text" id="cliente" name="cliente" required placeholder="Ex: João Silva">
 
-                <div class="grid-2">
-                    <div class="form-group">
-                        <label>Matrícula da Viatura:</label>
-                        <input type="text" name="matricula" placeholder="00-AA-00" style="text-transform:uppercase;" required>
-                    </div>
-                    <div class="form-group">
-                        <label>Serviço Pretendido:</label>
-                        <select name="servico" required>
-                            <option value="">Selecione o serviço...</option>
-                            <option value="Revisão Geral / Óleos">🛢️ Revisão Geral (Óleos e Filtros)</option>
-                            <option value="Pneus & Alinhamento">🛞 Pneus & Alinhamento de Direção</option>
-                            <option value="Sistema de Travões">🛑 Sistema de Travões</option>
-                            <option value="Diagnóstico Eletrónico">⚡ Diagnóstico Eletrónico</option>
-                            <option value="Lavagem & Polimento">✨ Lavagem & Polimento</option>
-                            <option value="Outro Serviço">🔧 Outro Serviço / Avaria</option>
-                        </select>
-                    </div>
-                </div>
+                <label for="contacto">Telefone / Telemóvel:</label>
+                <input type="tel" id="contacto" name="contacto" required placeholder="Ex: 912345678">
 
-                <div class="grid-2">
-                    <div class="form-group">
-                        <label>Data Pretendida:</label>
-                        <input type="date" name="data" required>
-                    </div>
-                    <div class="form-group">
-                        <label>Horário:</label>
-                        <select name="hora" required>
-                            <option value="">Selecione a hora...</option>
-                            <option value="09:00">09:00 - Período da Manhã</option>
-                            <option value="11:00">11:00 - Fim da Manhã</option>
-                            <option value="14:30">14:30 - Período da Tarde</option>
-                            <option value="16:30">16:30 - Fim de Tarde</option>
-                        </select>
-                    </div>
-                </div>
+                <label for="matricula">Matrícula da Viatura:</label>
+                <input type="text" id="matricula" name="matricula" required placeholder="Ex: AA-00-AA" style="text-transform:uppercase;">
 
-                <div class="form-group">
-                    <label>Sintomas / Observações:</label>
-                    <textarea name="observacoes" rows="2" placeholder="Descreva brevemente o problema ou pedido..."></textarea>
-                </div>
+                <label for="servico">Serviço Pretendido:</label>
+                <select id="servico" name="servico" required>
+                    {opcoes_servicos}
+                </select>
+                <div class="badge-info">ℹ️ Os valores são sob consulta e avaliação prévia da viatura nas nossas instalações.</div>
 
-                <div class="gdpr">
-                    🔒 <b>Aviso Legal & Privacidade (GDPR):</b> Os dados recolhidos destinam-se exclusivamente à gestão da reparação e serão <b>eliminados automaticamente ao fim de 30 dias</b>.
-                </div>
+                <label for="data">Data Pretendida:</label>
+                <input type="date" id="data" name="data" required>
 
-                <button type="submit">CONFIRMAR AGENDAMENTO</button>
+                <label for="hora">Hora Pretendida:</label>
+                <input type="time" id="hora" name="hora" required>
+
+                <label for="observacoes">Observações (opcional):</label>
+                <textarea id="observacoes" name="observacoes" rows="3" placeholder="Ex: Detalhes sobre lavagem, polimento ou avaria..."></textarea>
+
+                <button type="submit">MARCAR AGENDAMENTO</button>
             </form>
         </div>
-
-        <footer>
-            <div class="footer-links">
-                <a href="#">C. Gerais de Venda</a> | 
-                <a href="#">C. Gerais de Reparação</a> | 
-                <a href="#">Termos e Condições</a> | 
-                <a href="#">Regulamento Cookies</a> | 
-                <a href="#">Contrato de Dados Pessoais</a> | 
-                <a href="#">Compromisso com a Ética</a>
-            </div>
-            <p>⭐ Avaliações baseadas nos dados recolhidos para o Centro Auto Sofisticar: <b>4.8/5</b> (baseado em avaliações de clientes verificados)</p>
-            <p style="margin-top: 10px;">© 2026 Centro Auto Sofisticar. Todos os direitos reservados.</p>
-        </footer>
     </body>
     </html>
     """
 
-# 🔐 2. LOGIN COM CÓDIGO DINÂMICO PARA O GESTOR
-@app.get("/login_gestor", response_class=HTMLResponse)
-def login_gestor():
-    novo_codigo = f"{random.randint(1000, 9999)}"
-    ESTADO_SESSAO["codigo_atual"] = novo_codigo
+# 🔍 CONSULTAR ESTADO POR MATRÍCULA
+@app.get("/consultar_cliente", response_class=HTMLResponse)
+def consultar_cliente(matricula: str):
+    matricula_limpa = matricula.strip().upper()
+    resultados = [item for item in agendamentos if item["matricula"].upper() == matricula_limpa]
+    
+    linhas = ""
+    if resultados:
+        for r in resultados:
+            cor_badge = "#ffc107" if r["estado"] == "Pendente" else ("#007bff" if r["estado"] == "Em Serviço" else "#28a745")
+            linhas += f"""
+            <tr style="border-bottom: 1px solid #ddd;">
+                <td style="padding:12px;"><b>{r['servico']}</b></td>
+                <td style="padding:12px;">{r['data']} às {r['hora']}</td>
+                <td style="padding:12px;"><i>{r['observacoes'] or 'Nenhuma'}</i></td>
+                <td style="padding:12px;"><span style="background-color: {cor_badge}; color: {'black' if r['estado']=='Pendente' else 'white'}; padding: 4px 10px; border-radius: 12px; font-weight: bold; font-size: 12px;">{r['estado']}</span></td>
+            </tr>
+            """
+    else:
+        linhas = '<tr><td colspan="4" style="padding:20px; text-align:center; color:#666;">Nenhum agendamento encontrado para esta matrícula.</td></tr>'
 
     return f"""
     <!DOCTYPE html>
     <html lang="pt">
-    <head><meta charset="UTF-8"><title>Autenticação do Gestor - Centro Auto Sofisticar</title>
-    <style>
-        body {{ font-family: 'Segoe UI', sans-serif; background: #121212; color: #fff; display: flex; justify-content: center; align-items: center; height: 100vh; margin: 0; }}
-        .box {{ background: #181818; padding: 40px; border-radius: 12px; border-top: 5px solid #d4af37; width: 100%; max-width: 400px; text-align: center; box-shadow: 0 10px 30px rgba(0,0,0,0.7); }}
-        input {{ width: 100%; padding: 12px; background: #2a2a2a; border: 1px solid #555; border-radius: 6px; color: #fff; text-align: center; font-size: 22px; letter-spacing: 5px; margin-bottom: 20px; box-sizing: border-box; }}
-        button {{ background: #d4af37; color: #121212; border: none; padding: 12px; font-weight: bold; font-size: 16px; border-radius: 6px; cursor: pointer; width: 100%; }}
-        button:hover {{ background: #b8972f; }}
-        .info-code {{ background: #252525; padding: 12px; border-radius: 6px; color: #d4af37; font-size: 14px; margin-bottom: 20px; border: 1px dashed #d4af37; }}
-    </style>
+    <head>
+        <meta charset="UTF-8">
+        <title>Resultados - Centro Auto Sofisticar</title>
+        {get_css()}
     </head>
     <body>
-        <div class="box">
-            <h2 style="color: #d4af37; margin-top:0;">🔒 Área Restrita</h2>
-            <p style="font-size:13px; color:#aaa;">Insira o código dinâmico de acesso gerado para esta sessão:</p>
-            
-            <div class="info-code">
-                🔑 <b>Código Temporário Ativo:</b><br><span style="font-size:24px; font-weight:bold;">{novo_codigo}</span>
-            </div>
-
-            <form action="/verificar_login" method="post">
-                <input type="text" name="codigo_inserido" placeholder="••••" maxlength="4" required autofocus>
-                <button type="submit">ENTRAR NO PAINEL</button>
-            </form>
-            <br><a href="/" style="color: #888; text-decoration: none; font-size: 12px;">← Voltar ao Portal Público</a>
+        <div class="container">
+            <a href="/cliente" class="btn-voltar">← Voltar ao Portal</a>
+            <h2>Resultados para a Matrícula: <span style="color:#d4af37;">{matricula_limpa}</span></h2>
+            <table>
+                <tr><th>Serviço</th><th>Data & Hora</th><th>Observações</th><th>Estado Atual</th></tr>
+                {linhas}
+            </table>
         </div>
     </body>
     </html>
     """
 
-@app.post("/verificar_login")
-def verificar_login(codigo_inserido: str = Form(...)):
-    if codigo_inserido.strip() == ESTADO_SESSAO["codigo_atual"]:
-        ESTADO_SESSAO["autenticado"] = True
-        return RedirectResponse(url="/painel", status_code=303)
-    else:
+# 📩 PROCESSAR AGENDAMENTO
+@app.post("/agendar")
+def processar_agendamento(
+    cliente: str = Form(...),
+    contacto: str = Form(...),
+    matricula: str = Form(...),
+    servico: str = Form(...),
+    data: str = Form(...),
+    hora: str = Form(...),
+    observacoes: str = Form("")
+):
+    matricula_Formatada = matricula.strip().upper()
+    
+    for item in agendamentos:
+        if item["data"] == data and item["hora"] == hora and item["estado"] != "Cancelado":
+            return RedirectResponse(
+                url=f"/cliente?erro=O horário {hora} do dia {data} já se encontra ocupado. Por favor, escolha outra hora.", 
+                status_code=303
+            )
+
+    novo_id = len(agendamentos) + 1
+    agendamentos.append({
+        "id": novo_id,
+        "cliente": cliente,
+        "contacto": contacto,
+        "matricula": matricula_Formatada,
+        "servico": servico,
+        "data": data,
+        "hora": hora,
+        "estado": "Pendente",
+        "observacoes": observacoes
+    })
+    return RedirectResponse(url="/cliente?sucesso=True", status_code=303)
+
+# 📊 PAINEL DE GESTÃO DA EMPRESA (PROTEGIDO POR PIN)
+@app.get("/painel", response_class=HTMLResponse)
+def pagina_painel(pin: str = ""):
+    if pin != PIN_ADMIN:
         return """
-        <body style="background:#121212; color:#fff; font-family:sans-serif; text-align:center; padding-top:80px;">
-            <div style="max-width:350px; margin:auto; background:#181818; padding:30px; border-radius:8px; border:1px solid #ff4d4d;">
-                <h3 style="color:#ff4d4d;">Código Incorreto!</h3>
-                <p style="color:#aaa; font-size:14px;">O código inserido não corresponde ao código dinâmico gerado.</p>
-                <a href="/login_gestor" style="color:#d4af37; text-decoration:none; font-weight:bold;">← Tentar Novamente</a>
+        <!DOCTYPE html>
+        <html lang="pt">
+        <head>
+            <meta charset="UTF-8">
+            <title>Acesso Negado - Centro Auto Sofisticar</title>
+            <style>
+                body { font-family: 'Segoe UI', sans-serif; background: #1a1a1a; color: white; display: flex; justify-content: center; align-items: center; height: 100vh; margin: 0; }
+                .box { background: white; color: #333; padding: 40px; border-radius: 12px; text-align: center; box-shadow: 0 4px 25px rgba(0,0,0,0.5); border-top: 6px solid #d4af37; max-width: 400px; width: 100%; }
+                input { width: 100%; padding: 12px; margin: 15px 0; border: 1px solid #ccc; border-radius: 6px; box-sizing: border-box; font-size: 16px; }
+                button { background: #1a1a1a; color: #d4af37; border: 2px solid #d4af37; padding: 12px; width: 100%; border-radius: 6px; font-weight: bold; cursor: pointer; font-size: 16px; }
+                button:hover { background: #d4af37; color: #1a1a1a; }
+            </style>
+        </head>
+        <body>
+            <div class="box">
+                <h2 style="color:#1a1a1a; margin-top:0;">🔒 Área Restrita</h2>
+                <p style="color:#666; font-size:14px;">Introduza o PIN de acesso da oficina para visualizar o painel de gestão.</p>
+                <form action="/painel" method="get">
+                    <input type="password" name="pin" placeholder="PIN Secreto" required autofocus>
+                    <button type="submit">Entrar no Painel</button>
+                </form>
             </div>
         </body>
+        </html>
         """
 
-# ⚙️ 3. PAINEL DE GESTÃO (Protegido por Sessão Dinâmica)
-@app.get("/painel", response_class=HTMLResponse)
-def painel_geral():
-    if not ESTADO_SESSAO["autenticado"]:
-        return RedirectResponse(url="/login_gestor", status_code=303)
-
-    conn = sqlite3.connect(DB_FILE)
-    cursor = conn.cursor()
-    cursor.execute("SELECT id, codigo_seguimento, cliente, contacto, matricula, servico, data, hora, estado, observacoes FROM agendamentos ORDER BY id DESC")
-    agendamentos = cursor.fetchall()
-    
-    cursor.execute("SELECT COUNT(*) FROM agendamentos WHERE estado = 'Pendente'")
-    total_pendentes = cursor.fetchone()[0]
-
-    cursor.execute("SELECT id, titulo, cliente, matricula, total, criado_em FROM orcamentos ORDER BY id DESC")
-    orcamentos = cursor.fetchall()
-    conn.close()
-
-    alerta_html = ""
-    if total_pendentes > 0:
-        alerta_html = f"""
-        <div style="background: #ff4d4d; color: #fff; padding: 12px 20px; border-radius: 8px; margin-bottom: 20px; font-weight: bold; display: flex; align-items: center; justify-content: space-between; box-shadow: 0 4px 12px rgba(255,77,77,0.3);">
-            <span>🚨 ATENÇÃO: Tem {total_pendentes} novo(s) agendamento(s) pendente(s) a aguardar confirmação!</span>
-            <span style="background: #fff; color: #ff4d4d; padding: 2px 10px; border-radius: 12px; font-size: 12px;">Ação Necessária</span>
-        </div>
-        """
-
-    linhas_ag = ""
-    for a in agendamentos:
-        id_a, cod, cli, cont, mat, serv, data, hora, estado, obs = a
-        destaque_linha = "background: rgba(212, 175, 55, 0.05);" if estado == 'Pendente' else ""
+    linhas_tabela = ""
+    for item in reversed(agendamentos):
+        cor_badge = "#ffc107" if item["estado"] == "Pendente" else ("#007bff" if item["estado"] == "Em Serviço" else "#28a745")
         
-        linhas_ag += f"""
-        <tr style="border-bottom: 1px solid #333; {destaque_linha}">
-            <td style="padding: 10px; color:#d4af37;"><b>{cod}</b></td>
-            <td style="padding: 10px;">{cli}<br><small style="color:#aaa;">{cont}</small></td>
-            <td style="padding: 10px;"><b>{mat}</b></td>
-            <td style="padding: 10px;">{serv}<br><small>{data} às {hora}</small></td>
-            <td style="padding: 10px;">
-                <form action="/atualizar_estado" method="post" style="display:inline;">
-                    <input type="hidden" name="id_agendamento" value="{id_a}">
-                    <select name="novo_estado" onchange="this.form.submit()" style="background:#222; color:#fff; border:1px solid #555; padding:5px; border-radius:4px; font-size:13px;">
-                        <option value="Pendente" {'selected' if estado == 'Pendente' else ''}>🟡 Pendente</option>
-                        <option value="Confirmado" {'selected' if estado == 'Confirmado' else ''}>🔵 Confirmado</option>
-                        <option value="Em Espera" {'selected' if estado == 'Em Espera' else ''}>🟠 Em Espera</option>
-                        <option value="Pronto para Levantamento" {'selected' if estado == 'Pronto para Levantamento' else ''}>🟢 Pronto p/ Levantamento</option>
-                    </select>
-                </form>
-            </td>
-            <td style="padding: 10px;">
-                <form action="/apagar_agendamento" method="post" style="display:inline;">
-                    <input type="hidden" name="id_agendamento" value="{id_a}">
-                    <button type="submit" style="background:#ff4d4d; color:#fff; border:none; padding:5px 10px; border-radius:4px; cursor:pointer;" onclick="return confirm('Apagar agendamento?');">Apagar</button>
-                </form>
-            </td>
-        </tr>
-        """
+        estilo_linha = ""
+        if "Lavagens" in item["servico"]:
+            estilo_linha = "background-color: #f1f8ff;"
+        elif "Polimento" in item["servico"]:
+            estilo_linha = "background-color: #faf5fb;"
 
-    linhas_orc = ""
-    for o in orcamentos:
-        linhas_orc += f"""
-        <tr style="border-bottom: 1px solid #333;">
-            <td style="padding: 10px;">#{o[0]}</td>
-            <td style="padding: 10px;">{o[1]}</td>
-            <td style="padding: 10px;">{o[2]} ({o[3]})</td>
-            <td style="padding: 10px; color: #28a745; font-weight: bold;">{o[4]:.2f} €</td>
-            <td style="padding: 10px;">
-                <a href="/orcamento?id={o[0]}" target="_blank" style="color: #d4af37; text-decoration: none; margin-right: 10px;">Ver PDF</a>
-                <form action="/apagar_orcamento" method="post" style="display:inline;">
-                    <input type="hidden" name="id_orcamento" value="{o[0]}">
-                    <button type="submit" style="background:#ff4d4d; color:#fff; border:none; padding:5px 10px; border-radius:4px; cursor:pointer;">Apagar</button>
-                </form>
+        # Geração do link dinâmico para o WhatsApp com indicativo de Portugal (351)
+        msg_wpp = f"Olá {item['cliente']}! Confirmamos o agendamento da viatura {item['matricula']} para o serviço '{item['servico']}' no dia {item['data']} às {item['hora']}."
+        link_wpp = f"https://wa.me/351{item['contacto']}?text={msg_wpp.replace(' ', '%20')}"
+
+        linhas_tabela += f"""
+        <tr style="{estilo_linha}">
+            <td>#{item['id']}</td>
+            <td><b>{item['cliente']}</b><br><small>{item['contacto']}</small></td>
+            <td><span style="background: #333; color: white; padding: 3px 8px; border-radius: 4px; font-weight: bold;">{item['matricula']}</span></td>
+            <td><b>{item['servico']}</b></td>
+            <td>{item['data']} às {item['hora']}</td>
+            <td><i>{item['observacoes'] or '-'}</i></td>
+            <td><span style="background-color: {cor_badge}; color: {'black' if item['estado']=='Pendente' else 'white'}; padding: 5px 10px; border-radius: 12px; font-weight: bold; font-size: 12px;">{item['estado']}</span></td>
+            <td>
+                <a href="/alterar_estado?id={item['id']}&estado=Em Serviço&pin={PIN_ADMIN}" class="btn btn-iniciar">Iniciar</a>
+                <a href="/alterar_estado?id={item['id']}&estado=Concluído&pin={PIN_ADMIN}" class="btn btn-concluir">Concluir</a><br>
+                <a href="{link_wpp}" target="_blank" class="btn btn-wpp">📲 WhatsApp</a>
             </td>
         </tr>
         """
@@ -378,205 +273,46 @@ def painel_geral():
     return f"""
     <!DOCTYPE html>
     <html lang="pt">
-    <head><meta charset="UTF-8"><title>Painel de Gestão - Centro Auto Sofisticar</title>
-    <style>
-        body {{ font-family: 'Segoe UI', sans-serif; background: #121212; color: #fff; margin:0; padding:0; }}
-        header {{ background: #181818; border-bottom: 2px solid #333; padding: 15px 40px; display: flex; justify-content: space-between; align-items: center; }}
-        .brand {{ display: flex; align-items: center; gap: 12px; }}
-        .logo-box {{ background: #d4af37; color: #121212; font-weight: bold; padding: 10px 14px; border-radius: 6px; font-size: 18px; }}
-        .brand h1 {{ margin: 0; color: #d4af37; font-size: 18px; }}
-        .container {{ max-width: 1100px; margin: 30px auto; background: #181818; padding: 35px; border-radius: 12px; border-top: 5px solid #d4af37; }}
-        table {{ width: 100%; border-collapse: collapse; margin-top: 15px; margin-bottom: 40px; }}
-        th {{ background: #222; color: #d4af37; padding: 10px; text-align: left; font-size: 13px; }}
-        .btn {{ background: #d4af37; color: #121212; padding: 10px 18px; text-decoration: none; font-weight: bold; border-radius: 6px; display: inline-block; }}
-    </style>
+    <head>
+        <meta charset="UTF-8">
+        <title>Painel - Centro Auto Sofisticar</title>
+        {get_css()}
     </head>
-    <body>
-        <header>
-            <div class="brand">
-                <div class="logo-box">CAS</div>
-                <div>
-                    <h1>PAINEL DE CONTROLO ENTERPRISE</h1>
-                    <p style="margin:0; color:#aaa; font-size:11px;">Centro Auto Sofisticar - Gestão Interna</p>
-                </div>
+    <body class="painel-body">
+        <div class="painel-container">
+            <div class="header-painel">
+                <h2>🛠️ Painel de Gestão - Centro Auto Sofisticar</h2>
+                <span>Agendamentos Totais: <b>{len(agendamentos)}</b></span>
             </div>
-            <div>
-                <a href="/logout" style="color: #ff4d4d; text-decoration: none; border: 1px solid #ff4d4d; padding: 6px 12px; border-radius: 6px; font-size: 13px;">🚪 Terminar Sessão</a>
-            </div>
-        </header>
-
-        <div class="container">
-            {alerta_html}
-
-            <div style="margin-bottom: 25px;">
-                <a href="/novo_orcamento" class="btn">+ Criar Orçamento / Descontos</a>
-                <a href="/" target="_blank" style="color:#d4af37; text-decoration:none; margin-left:20px; font-weight:bold;">🌐 Ver Portal Público</a>
-            </div>
-
-            <h3 style="color:#d4af37;">📥 Gestão de Agendamentos e Estados</h3>
             <table>
-                <tr><th>Código</th><th>Cliente</th><th>Matrícula</th><th>Serviço</th><th>Estado Atual</th><th>Ação</th></tr>
-                {linhas_ag if linhas_ag else '<tr><td colspan="6" style="padding:15px; text-align:center; color:#777;">Sem agendamentos.</td></tr>'}
-            </table>
-
-            <h3 style="color:#d4af37;">📄 Orçamentos Emitidos</h3>
-            <table>
-                <tr><th>ID</th><th>Título</th><th>Cliente (Matrícula)</th><th>Total</th><th>Ações</th></tr>
-                {linhas_orc if linhas_orc else '<tr><td colspan="5" style="padding:15px; text-align:center; color:#777;">Sem orçamentos.</td></tr>'}
+                <thead>
+                    <tr>
+                        <th>ID</th>
+                        <th>Cliente</th>
+                        <th>Matrícula</th>
+                        <th>Serviço Solicitado</th>
+                        <th>Data & Hora</th>
+                        <th>Observações</th>
+                        <th>Estado</th>
+                        <th>Ações</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {linhas_tabela}
+                </tbody>
             </table>
         </div>
     </body>
     </html>
     """
 
-@app.get("/logout")
-def logout():
-    ESTADO_SESSAO["autenticado"] = False
-    return RedirectResponse(url="/login_gestor", status_code=303)
-
-@app.post("/atualizar_estado")
-def atualizar_estado(id_agendamento: int = Form(...), novo_estado: str = Form(...)):
-    if ESTADO_SESSAO["autenticado"]:
-        conn = sqlite3.connect(DB_FILE)
-        cursor = conn.cursor()
-        cursor.execute("UPDATE agendamentos SET estado = ? WHERE id = ?", (novo_estado, id_agendamento))
-        conn.commit()
-        conn.close()
-    return RedirectResponse(url="/painel", status_code=303)
-
-@app.get("/novo_orcamento", response_class=HTMLResponse)
-def form_orcamento():
-    if not ESTADO_SESSAO["autenticado"]: return RedirectResponse(url="/login_gestor", status_code=303)
-
-    blocos = ""
-    for cat, itens in CATALOGO_COMPLETO.items():
-        blocos += f"""<div style="background:#1e1e1e; padding:15px; margin-bottom:15px; border-radius:8px; border:1px solid #444;">
-        <h4 style="color:#d4af37; margin-top:0;">{cat}</h4>"""
-        for nome, info in itens.items():
-            blocos += f"""<div style="display:flex; justify-content:space-between; align-items:center; background:#252525; padding:6px 10px; margin-bottom:6px; border-radius:4px;">
-            <label style="cursor:pointer; flex:1; font-size:13px;"><input type="checkbox" name="pecas_selecionadas" value="{nome}" style="margin-right:8px;">{nome}</label>
-            <b style="color:#28a745; font-size:13px;">{info['preco']:.2f} € (Stock: {info['stock']})</b></div>"""
-        blocos += "</div>"
-
-    return f"""
-    <!DOCTYPE html>
-    <html lang="pt">
-    <head><meta charset="UTF-8"><title>Criar Orçamento com Desconto</title>
-    <style>body {{ font-family: 'Segoe UI', sans-serif; background: #121212; color: #fff; padding: 25px; }}
-    .box {{ max-width: 750px; margin: auto; background: #181818; padding: 30px; border-radius: 12px; border-top: 5px solid #d4af37; }}
-    input[type="text"], input[type="number"], textarea {{ width: 100%; padding: 10px; background: #2a2a2a; border: 1px solid #555; border-radius: 6px; color: #fff; margin-bottom: 15px; box-sizing: border-box; }}
-    button {{ background: #d4af37; color: #121212; border: none; padding: 12px; font-weight: bold; border-radius: 6px; cursor: pointer; width: 100%; font-size: 15px; }}
-    </style></head>
-    <body>
-        <div class="box">
-            <h2>🛠️ Criar Orçamento (Com Catálogo e Descontos)</h2>
-            <a href="/painel" style="color:#d4af37; text-decoration:none; display:inline-block; margin-bottom:20px;">← Voltar ao Painel</a>
-            <form action="/criar_orcamento" method="post">
-                <label><b>Título / Serviço:</b></label><input type="text" name="titulo" required>
-                <div style="display:grid; grid-template-columns:1fr 1fr; gap:15px;">
-                    <div><label><b>Cliente:</b></label><input type="text" name="cliente" required></div>
-                    <div><label><b>Matrícula:</b></label><input type="text" name="matricula" style="text-transform:uppercase;" required></div>
-                </div>
-                <label><b>Desconto Aplicado (€):</b></label>
-                <input type="number" step="0.01" name="desconto_valor" value="0.00" placeholder="Ex: 10.00">
-                <label><b>Selecionar Peças / Serviços Oferecidos:</b></label>{blocos}
-                <label><b>Notas:</b></label><textarea name="descricao" rows="2"></textarea>
-                <button type="submit">GERAR ORÇAMENTO E FATURAÇÃO (IVA 23%)</button>
-            </form>
-        </div>
-    </body>
-    </html>
-    """
-
-@app.post("/criar_orcamento")
-def processar_criar_orcamento(
-    titulo: str = Form(...), cliente: str = Form(...),
-    matricula: str = Form(...), desconto_valor: float = Form(0.0),
-    pecas_selecionadas: list = Form(default=[]), descricao: str = Form("")
-):
-    if not ESTADO_SESSAO["autenticado"]: return RedirectResponse(url="/login_gestor", status_code=303)
-    
-    subtotal = 0.0
-    for p in pecas_selecionadas:
-        for cat, itens in CATALOGO_COMPLETO.items():
-            if p in itens:
-                subtotal += itens[p]["preco"]
-
-    base_tributavel = max(0.0, subtotal - desconto_valor)
-    iva = base_tributavel * 0.23
-    total = base_tributavel * 1.23
-
-    conn = sqlite3.connect(DB_FILE)
-    cursor = conn.cursor()
-    cursor.execute("""
-        INSERT INTO orcamentos (titulo, cliente, matricula, pecas, descricao, subtotal, desconto, iva, total) 
-        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
-    """, (titulo, cliente, matricula.upper(), ", ".join(pecas_selecionadas), descricao, subtotal, desconto_valor, iva, total))
-    conn.commit()
-    conn.close()
-    return RedirectResponse(url="/painel", status_code=303)
-
-@app.get("/orcamento", response_class=HTMLResponse)
-def ver_orcamento(id: int):
-    conn = sqlite3.connect(DB_FILE)
-    cursor = conn.cursor()
-    cursor.execute("SELECT id, titulo, cliente, matricula, pecas, descricao, subtotal, desconto, iva, total, criado_em FROM orcamentos WHERE id = ?", (id,))
-    reg = cursor.fetchone()
-    conn.close()
-    if not reg: return "<h3>Orçamento não encontrado.</h3>"
-    id_o, titulo, cli, mat, pecas, desc, sub, desc_val, iva, total, criado = reg
-    itens = "".join([f"<li>{p.strip()}</li>" for p in pecas.split(",") if p.strip()])
-
-    desconto_html = f"<p>Desconto Comercial: -{desc_val:.2f} €</p>" if desc_val > 0 else ""
-
-    return f"""
-    <!DOCTYPE html>
-    <html lang="pt">
-    <head><meta charset="UTF-8"><title>Orçamento #{id_o}</title>
-    <style>body{{font-family:Arial,sans-serif;padding:40px;max-width:650px;margin:auto;border:2px solid #d4af37;border-radius:8px;background:#fff;color:#000;}}
-    @media print {{ .btn {{ display: none; }} }}</style>
-    </head>
-    <body>
-        <button onclick="window.print()" class="btn" style="background:#d4af37;border:none;padding:8px 15px;font-weight:bold;cursor:pointer;border-radius:4px;margin-bottom:15px;">🖨️ Imprimir PDF</button>
-        <div style="display:flex; justify-content:space-between; align-items:center; border-bottom:2px solid #d4af37; padding-bottom:10px; margin-bottom:15px;">
-            <div><h2 style="margin:0; color:#121212;">CENTRO AUTO SOFISTICAR</h2><small style="color:#666;">Oficina Oficial & Multimarca</small></div>
-            <div style="text-align:right; font-weight:bold; font-size:14px;">Orçamento Nº {id_o}<br><span style="font-size:11px; color:#666;">{criado}</span></div>
-        </div>
-        <p><b>Cliente:</b> {cli} | <b>Matrícula:</b> <span style="background:#eee; padding:2px 6px; border-radius:4px;">{mat}</span></p>
-        <p><b>Serviço Principal:</b> {titulo}</p>
-        <h4 style="border-bottom:1px solid #ddd; padding-bottom:5px;">Serviços e Peças Aplicados:</h4>
-        <ul>{itens}</ul>
-        <p><b>Observações:</b> {desc if desc else 'Nenhuma'}</p>
-        <div style="text-align:right; margin-top:30px; border-top:2px solid #eee; padding-top:15px;">
-            <p>Subtotal Peças/Serviços: {sub:.2f} €</p>
-            {desconto_html}
-            <p>IVA (23%): {iva:.2f} €</p>
-            <h2 style="color:#d4af37; margin:5px 0;">TOTAL FINAL: {total:.2f} €</h2>
-        </div>
-    </body>
-    </html>
-    """
-
-@app.post("/apagar_agendamento")
-def apagar_agendamento(id_agendamento: int = Form(...)):
-    if ESTADO_SESSAO["autenticado"]:
-        conn = sqlite3.connect(DB_FILE)
-        cursor = conn.cursor()
-        cursor.execute("DELETE FROM agendamentos WHERE id = ?", (id_agendamento,))
-        conn.commit()
-        conn.close()
-    return RedirectResponse(url="/painel", status_code=303)
-
-@app.post("/apagar_orcamento")
-def apagar_orcamento(id_orcamento: int = Form(...)):
-    if ESTADO_SESSAO["autenticado"]:
-        conn = sqlite3.connect(DB_FILE)
-        cursor = conn.cursor()
-        cursor.execute("DELETE FROM orcamentos WHERE id = ?", (id_orcamento,))
-        conn.commit()
-        conn.close()
-    return RedirectResponse(url="/painel", status_code=303)
-
-if __name__ == "__main__":
-    import uvicorn
-    uvicorn.run("main:app", host="0.0.0.0", port=int(os.environ.get("PORT", 10000)))
+# ⚙️ ROTA PARA MUDAR O ESTADO NO PAINEL (Protegida por PIN)
+@app.get("/alterar_estado")
+def alterar_estado(id: int, estado: str, pin: str = ""):
+    if pin != PIN_ADMIN:
+        return RedirectResponse(url="/painel", status_code=303)
+        
+    for item in agendamentos:
+        if item["id"] == id:
+            item["estado"] = estado
+    return RedirectResponse(url=f"/painel?pin={PIN_ADMIN}", status_code=303)
