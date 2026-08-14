@@ -1,9 +1,7 @@
 from fastapi import FastAPI, Request, Form
-from fastapi.responses import HTMLResponse, RedirectResponse, Response
+from fastapi.responses import HTMLResponse, RedirectResponse
 import sqlite3
 import os
-import io
-import csv
 from datetime import datetime, timedelta
 
 app = FastAPI(title="Centro Auto Sofisticar - Gestão Completa")
@@ -111,11 +109,77 @@ def get_status_emoji(criado_em_str, estado):
         dif = datetime.now() - dt
     except:
         return "🟢 Em Prazo"
-    
+     
     if dif < timedelta(hours=1): return "🟢 Em Prazo"
     if dif < timedelta(hours=2): return "🟡 Atenção (1h+)"
     if dif < timedelta(hours=3): return "🟠 Alerta (2h+)"
     return "🔴 Crítico (3h+)"
+
+# 🌐 PAINEL PRINCIPAL (Faltava esta rota e evitava erros de Redirect)
+@app.get("/painel", response_class=HTMLResponse)
+def painel_geral(pin: str = ""):
+    if pin != PIN_ACESSO:
+        return "<body style='background:#121212; color:#fff; font-family:sans-serif; text-align:center; padding-top:50px;'><h3>Acesso restrito. Insira o PIN correto (ex: /painel?pin=1234)</h3></body>"
+
+    conn = sqlite3.connect(DB_FILE)
+    cursor = conn.cursor()
+    cursor.execute("SELECT id, titulo, cliente, matricula, total, criado_em FROM orcamentos ORDER BY id DESC")
+    orcamentos = cursor.fetchall()
+    conn.close()
+
+    linhas_orcamentos = ""
+    for o in orcamentos:
+        linhas_orcamentos += f"""
+        <tr style="border-bottom: 1px solid #333;">
+            <td style="padding: 10px;">#{o[0]}</td>
+            <td style="padding: 10px;">{o[1]}</td>
+            <td style="padding: 10px;">{o[2]} ({o[3]})</td>
+            <td style="padding: 10px; color: #28a745; font-weight: bold;">{o[4]:.2f} €</td>
+            <td style="padding: 10px;">
+                <a href="/orcamento?id={o[0]}" target="_blank" style="color: #d4af37; text-decoration: none; margin-right: 10px;">Ver</a>
+                <form action="/apagar_orcamento" method="post" style="display:inline;">
+                    <input type="hidden" name="id_orcamento" value="{o[0]}">
+                    <input type="hidden" name="pin" value="{pin}">
+                    <button type="submit" style="background:#ff4d4d; color:#fff; border:none; padding:5px 10px; border-radius:4px; cursor:pointer;">Apagar</button>
+                </form>
+            </td>
+        </tr>
+        """
+
+    return f"""
+    <!DOCTYPE html>
+    <html lang="pt">
+    <head>
+        <meta charset="UTF-8">
+        <title>Painel - Centro Auto Sofisticar</title>
+        <style>
+            body {{ font-family: 'Segoe UI', sans-serif; background: #121212; color: #fff; padding: 20px; }}
+            .container {{ max-width: 900px; margin: auto; background: #181818; padding: 30px; border-radius: 12px; border-top: 5px solid #d4af37; }}
+            a.btn {{ background: #d4af37; color: #121212; padding: 10px 15px; text-decoration: none; font-weight: bold; border-radius: 6px; display: inline-block; margin-bottom: 20px; }}
+            table {{ width: 100%; border-collapse: collapse; margin-top: 15px; }}
+            th {{ background: #222; color: #d4af37; padding: 10px; text-align: left; }}
+        </style>
+    </head>
+    <body>
+        <div class="container">
+            <h2>⚙️ Painel de Gestão - Centro Auto Sofisticar</h2>
+            <a href="/novo_orcamento?pin={pin}" class="btn">+ Criar Novo Orçamento</a>
+            
+            <h3>Orçamentos Emitidos</h3>
+            <table>
+                <tr>
+                    <th>ID</th>
+                    <th>Título</th>
+                    <th>Cliente (Matrícula)</th>
+                    <th>Total</th>
+                    <th>Ações</th>
+                </tr>
+                {linhas_orcamentos if linhas_orcamentos else '<tr><td colspan="5" style="padding: 15px; text-align:center; color:#777;">Sem orçamentos registados.</td></tr>'}
+            </table>
+        </div>
+    </body>
+    </html>
+    """
 
 # 🌐 PÁGINA DE CRIAÇÃO DE ORÇAMENTOS COM TODAS AS PEÇAS
 @app.get("/novo_orcamento", response_class=HTMLResponse)
@@ -181,7 +245,7 @@ def form_orcamento(pin: str = ""):
                 {blocos_html}
 
                 <label><b>Descrição / Notas Adicionais para o Mecânico:</b></label>
-                <textarea name="descricao" rows="3" placeholder="Ex: Tubagens secundárias também aparentam desgaste, verificar no ato da montagem..."></textarea>
+                <textarea name="descricao" rows="3" placeholder="Ex: Tubagens secundárias também aparentam desgaste..."></textarea>
 
                 <button type="submit">GERAR ORÇAMENTO COM CÁLCULO DE IVA (23%)</button>
             </form>
@@ -200,9 +264,8 @@ def processar_criar_orcamento(
     descricao: str = Form("")
 ):
     if pin != PIN_ACESSO:
-        return RedirectResponse(url="/painel", status_code=303)
+        return RedirectResponse(url=f"/painel?pin={pin}", status_code=303)
 
-    # Calcular o subtotal somando os preços reais do catálogo
     subtotal = 0.0
     for peca in pecas_selecionadas:
         for cat, itens in CATALOGO_COMPLETO.items():
@@ -224,7 +287,7 @@ def processar_criar_orcamento(
 
     return RedirectResponse(url=f"/painel?pin={pin}", status_code=303)
 
-# 📄 VISUALIZAR / IMPRIMIR ORÇAMENTO EM PDF
+# 📄 VISUALIZAR / IMPRIMIR ORÇAMENTO
 @app.get("/orcamento", response_class=HTMLResponse)
 def ver_orcamento(id: int):
     conn = sqlite3.connect(DB_FILE)
